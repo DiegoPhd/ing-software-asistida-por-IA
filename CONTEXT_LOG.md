@@ -175,15 +175,18 @@ Compara el comportamiento que observaste al interactuar con:
 2. **Modelo de Razonamiento Extendido (*Thinking Model*)**:
 - ¿En cuál de las tareas de la semana fue indispensable el modelo de razonamiento y en cuál bastó el modelo rápido?
 
+    El modelo rápido basta cuando no se tiene complejidad en la tarea a realizar y además cuando hay poco riesgo si la IA se equivoca, además, entrega resultados casi que al instante, por ejemplo, consultar ciertos temas, evaluar opciones sencillas, entre otros
+    Para el modelo de razonamiento se usó mas que todo al momento de generar nueva información que necesita tener cierto nivel de precisión, por ejemplo, para generación de reportes ejecutivos.
+
 ### 3.2 Matriz de Decisión Arquitectónica
 Para la plataforma *IncidentOps* y su evolución futura, justifica qué paradigma es el adecuado en cada escenario:
 
 | Escenario / Requerimiento | Paradigma Elegido (Código Determinista / ML Clásico / Asistente GenAI en Chat / LLM en Tiempo de Ejecución) | Justificación Técnica (Determinismo, Costo, Latencia, Riesgo de Alucinación) |
 | :--- | :--- | :--- |
-| 1. Contabilizar minutos hábiles transcurridos y verificar si un ticket superó el 75% de su SLA | | |
-| 2. Explorar casos borde y redactar un ADR antes de modificar la arquitectura de consultas SQL | | |
-| 3. Detectar anomalías numéricas en millones de métricas de CPU/RAM por minuto | | |
-| 4. Clasificar reportes de incidentes redactados en lenguaje natural abierto cuando las reglas deterministas no cubren nuevos patrones | | |
+| 1. Contabilizar minutos hábiles transcurridos y verificar si un ticket superó el 75% de su SLA | Código Determinista | Se elige por determinismo, simplemente se realiza el código siguiendo la lógica requerida, además el costo es bajo porque se ejecuta el código directamente en la máquina. |
+| 2. Explorar casos borde y redactar un ADR antes de modificar la arquitectura de consultas SQL | Asistente GenAI en Chat | Mediante el asistente de IA se pueden revisar casos bordes o casos no contemplados para modificar un arquitectua, además, ayuda a validar los diferentes escenarios ya planeados junto con sus riesgos, por otro lado, el riesgo es la alucinación, es por ello importante revisar al detalle lo entregado. |
+| 3. Detectar anomalías numéricas en millones de métricas de CPU/RAM por minuto | ML Clásico | De acuerdo a los datos entregados, se puede realizar un modelo de ML en donde se detecte comportamientos anómalos, no es necesaria la intervencion de generación de contenido o similar, además, no se puede utilizar el determinismo porque se depende de muchas variables y sería muy complejo su calculo mediante lógica. |
+| 4. Clasificar reportes de incidentes redactados en lenguaje natural abierto cuando las reglas deterministas no cubren nuevos patrones | LLM en tiempo de ejecución | Es el adecuado, dado que reduce la intervención humana y se hace mediante un proceso automático, esto es la combinación de código determinista y la IA |
 
 ---
 
@@ -192,11 +195,33 @@ Para la plataforma *IncidentOps* y su evolución futura, justifica qué paradigm
 ### 4.1 Medición Empírica en *IncidentOps*
 Completa la tabla con los resultados obtenidos al auditar los símbolos con `uv run python -m src.context_audit --symbol evaluate_sla_status` (y `classify_incident_report`):
 
+Para **evaluate_sla_status**
+
 | Estrategia de Recolección de Contexto | Alcance (Archivos / Nodos) | Caracteres Totales | Tokens (`tiktoken o200k_base`) | % de Reducción vs. Fuerza Bruta |
 | :--- | :--- | :---: | :---: | :---: |
-| **1. Fuerza Bruta (`glob` + `read` todo)** | Todos los archivos del proyecto | | | 0% (Línea base) |
-| **2. Búsqueda Textual (`grep` + `read` `.py`)** | Archivos `.py` donde aparece el símbolo | | | |
-| **3. Semántica vía LSP (`definition` + `references` + `hover`)** | Solo definición, tipos asociados y líneas de invocación | | | |
+| **1. Fuerza Bruta (`glob` + `read` todo)** | Todos los archivos del proyecto | 50139 | 12845| 0% (Línea base) |
+| **2. Búsqueda Textual (`grep` + `read` `.py`)** | Archivos `.py` donde aparece el símbolo | 28758 | 7152 | 44.3% |
+| **3. Semántica vía LSP (`definition` + `references` + `hover`)** | Solo definición, tipos asociados y líneas de invocación | 9110 | 2396 | 81.3% |
+
+Para **classify_incident_report**
+
+| Estrategia de Recolección de Contexto | Alcance (Archivos / Nodos) | Caracteres Totales | Tokens (`tiktoken o200k_base`) | % de Reducción vs. Fuerza Bruta |
+| :--- | :--- | :---: | :---: | :---: |
+| **1. Fuerza Bruta (`glob` + `read` todo)** | Todos los archivos del proyecto | 50139 | 12845 | 0% (Línea base) |
+| **2. Búsqueda Textual (`grep` + `read` `.py`)** | Archivos `.py` donde aparece el símbolo | 9537 | 2349 | 81.7% |
+| **3. Semántica vía LSP (`definition` + `references` + `hover`)** | Solo definición, tipos asociados y líneas de invocación | 9570 | 2390 | 81.4% |
 
 ### 4.2 Comparación de Formatos de Serialización (`--compare-formats`)
 Registra los tokens medidos con `tiktoken` para los 10 incidentes en JSON indentado, JSON compacto, YAML y CSV, y explica qué formato elegirías al inyectar datos tabulares o logs largos en la ventana de contexto.
+
+Estos son los resultados de la comparativa de formatos con tiktoken:
+| Formato de Serialización | Caracteres | Tokens |
+| :--- | :---: | :---: |
+| JSON Indentado (indent=2) | 2942 | 878 tokens |
+| JSON Compacto (minified) | 2641 | 728 tokens |
+| YAML Equivalente | 2579 | 755 tokens |
+| CSV Delimitado por '\|' | 2171 | 617 tokens |
+
+*Nota: Tokenizador activo: `tiktoken (o200k_base)` (10 incidentes).*
+
+Definitivamente eligiría el CSV delimitado por | ya que es el que más ahorra tokens y tiene menos caracteres. Esto pasa porque en json o YAML tiene caracteres obligatorios (-, {}, []) y estos consumen espacio.
