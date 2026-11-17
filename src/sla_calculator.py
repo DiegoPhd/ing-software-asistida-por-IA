@@ -1,18 +1,77 @@
-"""Módulo determinista para el cálculo y evaluación de acuerdos de nivel de servicio (SLA).
+from datetime import datetime, time, timedelta
+from typing import Dict, Literal, Optional
 
-NOTA PEDAGÓGICA (Semana 1):
-Este módulo contiene una simplificación/deuda técnica intencional que será analizada
-durante la Fase 1 (auditoría de contexto con LSP) y corregida en la Actividad Autónoma:
-- Actualmente calcula `elapsed_minutes` usando tiempo calendario continuo (24/7) para
-  TODOS los niveles de severidad, ignorando la propiedad `operates_24x7=False` de los
-  incidentes P2 y P3 (que solo deberían descontar tiempo en horario hábil: Lunes a Viernes,
-  08:00 a 18:00).
-"""
+# Tipos base definidos en src/models.py
+SeverityLevel = Literal["P0", "P1", "P2", "P3"]
+IncidentStatus = Literal["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
 
-from datetime import datetime
-from typing import Dict
 
-from src.models import Incident, SLAEvaluation, SLARule, SeverityLevel
+class SLARule:
+    """Define el acuerdo de nivel de servicio (SLA) para un nivel de severidad."""
+    def __init__(
+        self,
+        severity: SeverityLevel,
+        max_resolution_minutes: int,
+        operates_24x7: bool,
+        escalation_threshold_ratio: float = 0.75,
+    ):
+        self.severity = severity
+        self.max_resolution_minutes = max_resolution_minutes
+        self.operates_24x7 = operates_24x7
+        self.escalation_threshold_ratio = escalation_threshold_ratio
+
+
+class Incident:
+    """Representa un incidente registrado en la plataforma IncidentOps."""
+    def __init__(
+        self,
+        incident_id: str,
+        title: str,
+        component: str,
+        severity: SeverityLevel,
+        status: IncidentStatus,
+        created_at: datetime,
+        resolved_at: Optional[datetime] = None,
+        raw_text: Optional[str] = None,
+    ):
+        self.incident_id = incident_id
+        self.title = title
+        self.component = component
+        self.severity = severity
+        self.status = status
+        self.created_at = created_at
+        self.resolved_at = resolved_at
+        self.raw_text = raw_text
+
+
+class SLAEvaluation:
+    """Resultado determinista de la evaluación de SLA de un incidente."""
+    def __init__(
+        self,
+        incident_id: str,
+        severity: SeverityLevel,
+        elapsed_minutes: int,
+        allowed_minutes: int,
+        remaining_minutes: int,
+        is_breached: bool,
+        requires_escalation: bool,
+    ):
+        self.incident_id = incident_id
+        self.severity = severity
+        self.elapsed_minutes = elapsed_minutes
+        self.allowed_minutes = allowed_minutes
+        self.remaining_minutes = remaining_minutes
+        self.is_breached = is_breached
+        self.requires_escalation = requires_escalation
+
+    def __repr__(self) -> str:
+        return (
+            f"SLAEvaluation(id={self.incident_id}, severity={self.severity}, "
+            f"elapsed={self.elapsed_minutes}m, allowed={self.allowed_minutes}m, "
+            f"remaining={self.remaining_minutes}m, breached={self.is_breached}, "
+            f"escalation={self.requires_escalation})"
+        )
+
 
 SLA_POLICY_TABLE: Dict[SeverityLevel, SLARule] = {
     "P0": SLARule(severity="P0", max_resolution_minutes=60, operates_24x7=True),
@@ -45,11 +104,34 @@ def evaluate_sla_status(incident: Incident, reference_time: datetime) -> SLAEval
     if end_time < incident.created_at:
         raise ValueError("El tiempo de referencia no puede ser anterior a la creación.")
 
-    # TODO(week-1-taller): Cuando rule.operates_24x7 es False (P2 y P3), solo deben
-    # contabilizarse los minutos dentro del horario hábil (Lunes-Viernes 08:00-18:00).
-    delta_seconds = (end_time - incident.created_at).total_seconds()
-    elapsed_minutes = int(delta_seconds // 60)
+    # 1. Bifurcación por modalidad de operación
+    if rule.operates_24x7:
+        delta_seconds = (end_time - incident.created_at).total_seconds()
+        elapsed_minutes = int(delta_seconds // 60)
+    else:
+        # 2. Cálculo por bloques de días con intersección de ventana laboral (08:00 - 18:00)
+        total_seconds = 0.0
+        current_date = incident.created_at.date()
+        end_date = end_time.date()
 
+        while current_date <= end_date:
+            # Filtrar fines de semana (0 = Lunes, ..., 5 = Sábado, 6 = Domingo)
+            if current_date.weekday() < 5:
+                # TODO(week-1-taller): Integrar calendario de días festivos locales
+                work_start = datetime.combine(current_date, time(8, 0))
+                work_end = datetime.combine(current_date, time(18, 0))
+
+                effective_start = max(incident.created_at, work_start)
+                effective_end = min(end_time, work_end)
+
+                if effective_end > effective_start:
+                    total_seconds += (effective_end - effective_start).total_seconds()
+
+            current_date += timedelta(days=1)
+
+        elapsed_minutes = int(total_seconds // 60)
+
+    # 3. Evaluación de umbrales y estado de cumplimiento
     remaining_minutes = rule.max_resolution_minutes - elapsed_minutes
     is_breached = elapsed_minutes > rule.max_resolution_minutes
 
@@ -71,31 +153,82 @@ def evaluate_sla_status(incident: Incident, reference_time: datetime) -> SLAEval
     )
 
 
-def _run_demo() -> None:
-    """Ejecuta una demostración rápida del cálculo determinista de SLA."""
-    print("=== Demostración de Cálculo Determinista de SLA ===")
-    sample_incident = Incident(
-        incident_id="INC-2001",
-        title="Latencia elevada en reporte de órdenes",
-        component="reporting-api",
+def main() -> None:
+    """Función de demostración con diversos casos de prueba y casos borde."""
+    print("=== DEMO: EVALUACIÓN DE SLA EN INCIDENTOPS (ADR-002) ===\n")
+
+    # Caso 1: Incidente P0 (24x7) creado y evaluado 30 minutos después
+    inc_p0 = Incident(
+        incident_id="INC-001",
+        title="Fallo crítico en pasarela de pagos",
+        component="payments",
+        severity="P0",
+        status="OPEN",
+        created_at=datetime(2026, 11, 16, 2, 0, 0),
+    )
+    eval_p0 = evaluate_sla_status(inc_p0, reference_time=datetime(2026, 11, 16, 2, 30, 0))
+    print(f"Caso 1 [P0 24x7]: {eval_p0}")
+
+    # Caso 2: Incidente P2 creado un viernes a las 17:00 y evaluado el lunes a las 09:00
+    # Horas hábiles esperadas: Viernes 17:00-18:00 (60m) + Lunes 08:00-09:00 (60m) = 120 minutos totales
+    inc_p2_weekend = Incident(
+        incident_id="INC-002",
+        title="Lentitud en reporte analítico",
+        component="analytics",
         severity="P2",
         status="OPEN",
-        created_at=datetime(2026, 11, 6, 17, 0, 0),  # Viernes 17:00
+        created_at=datetime(2026, 11, 13, 17, 0, 0),  # Viernes
     )
-    # Lunes siguiente a las 09:00 (solo 2 horas hábiles reales, pero 64 horas calendario)
-    monday_morning = datetime(2026, 11, 9, 9, 0, 0)
-    evaluation = evaluate_sla_status(sample_incident, reference_time=monday_morning)
+    eval_p2_weekend = evaluate_sla_status(
+        inc_p2_weekend, reference_time=datetime(2026, 11, 16, 9, 0, 0)  # Lunes
+    )
+    print(f"Caso 2 [P2 Fin de Semana - 120m esperados]: {eval_p2_weekend}")
 
-    print(f"Incidente: {evaluation.incident_id} (Severidad {evaluation.severity})")
-    print(f"Minutos transcurridos calculados: {evaluation.elapsed_minutes} min")
-    print(f"Minutos permitidos por SLA:       {evaluation.allowed_minutes} min")
-    print(f"¿SLA Incumplido?:                 {evaluation.is_breached}")
-    print(
-        "Nota: Observa que para un ticket P2 creado el viernes a las 17:00 y evaluado "
-        "el lunes a las 09:00 se contaron todo el sábado y domingo como tiempo activo."
+    # Caso 3: Incidente P2 creado un sábado (fuera de horario) y evaluado el lunes a las 08:30
+    # Horas hábiles esperadas: Sábado/Domingo (0m) + Lunes 08:00-08:30 (30m) = 30 minutos totales
+    inc_p2_sat = Incident(
+        incident_id="INC-003",
+        title="Alerta menor de almacenamiento",
+        component="storage",
+        severity="P2",
+        status="OPEN",
+        created_at=datetime(2026, 11, 14, 14, 0, 0),  # Sábado
     )
+    eval_p2_sat = evaluate_sla_status(
+        inc_p2_sat, reference_time=datetime(2026, 11, 16, 8, 30, 0)  # Lunes
+    )
+    print(f"Caso 3 [P2 Creado en Sábado - 30m esperados]: {eval_p2_sat}")
+
+    # Caso 4: Incidente P2 alcanzando el umbral de escalamiento preventivo (75% de 480 min = 360 min)
+    inc_p2_esc = Incident(
+        incident_id="INC-004",
+        title="Error intermitente de caché",
+        component="cache",
+        severity="P2",
+        status="IN_PROGRESS",
+        created_at=datetime(2026, 11, 9, 9, 0, 0),  # Lunes anterior
+    )
+    # 360 minutos efectivos de trabajo equivalen exactamente a 6 horas hábiles
+    eval_p2_esc = evaluate_sla_status(
+        inc_p2_esc, reference_time=datetime(2026, 11, 9, 15, 0, 0)
+    )
+    print(f"Caso 4 [P2 Escalamiento Preventivo (360m)]: {eval_p2_esc}")
+    
+    # Caso 5: Incidente P3 creado de noche fuera de horario (21:00) y evaluado al día siguiente a las 10:00
+    # Horas hábiles esperadas: Noche anterior (0m) + Mañana siguiente de 08:00 a 10:00 (120m) = 120 minutos totales
+    inc_p3_night = Incident(
+        incident_id="INC-005",
+        title="Advertencia menor de respaldo nocturno",
+        component="backup",
+        severity="P3",
+        status="OPEN",
+        created_at=datetime(2026, 11, 16, 21, 0, 0),  # Lunes a las 21:00 (fuera de horario)
+    )
+    eval_p3_night = evaluate_sla_status(
+        inc_p3_night, reference_time=datetime(2026, 11, 17, 10, 0, 0)  # Martes a las 10:00
+    )
+    print(f"Caso 5 [P3 Creado en Horario Nocturno - 120m esperados]: {eval_p3_night}")
 
 
 if __name__ == "__main__":
-    _run_demo()
-
+    main()
