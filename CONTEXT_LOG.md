@@ -124,13 +124,45 @@ Refactoriza los archivos entregados de src/triage_rules.py y src/models.py para 
 ### 2.1 Exploración de Diseño (Sin Generar Código Aún) y Destilación
 - **Objetivo explorado**: Diseño del algoritmo de cálculo de SLA en horario hábil (`P2`/`P3`, Lunes–Viernes 08:00–18:00) vs. 24/7 (`P0`/`P1`) y regla de escalamiento preventivo al 75%.
 - **Síntesis de tu exploración de alternativas y resumen destilado (máx. 10 líneas)**:
-  > `[Describe qué dudas e hipótesis iniciales exploraste, qué casos borde descubriste junto con el modelo (creación en fin de semana, fuera de horario, cruces de varios días) y pega el bloque destilado que llevaste al nuevo chat limpio]`
+  > Se le indicó al modelo posibles casos bordes de la deuda técnica, entre ellos, la creación de incidentes un día no laboral, creación del incidente fuera del horario laboral, la medida estándar sería de días, horas y minutos para dar legibilidad y que queda como deuda técnica incluir días festivos para el cálculo. Al momento de realizar el plan, la IA me sugirió el estándar de la zona horaria, a continuación el resumen destilado:
+  
+  ```
+  Decisiones tomadas (Recomendación):
+  Iteración por bloques de días: Calcular el SLA hábil (L–V, 08:00–18:00) mediante la intersección de la ventana laboral diaria, resolviendo limpiamente fines de semana, horas nocturnas y múltiples semanas.
+
+  Deuda técnica controlada: Dejar los días festivos pendientes explícitamente con un # TODO para futura integración.
+
+  Opciones descartadas:
+
+  Iteración minuto a minuto: Descartada por su baja eficiencia en rendimiento ante incidentes abiertos por periodos prolongados.
+
+  Cálculo matemático directo O(1): Descartada por su alta complejidad, propensión a errores en casos borde y baja legibilidad.
+  ```
 
 ### 2.2 Ejecución con Contexto Curado en Nuevo Chat Limpio (*Context Engineering*)
 Copia el prompt estructurado con etiquetas XML que utilizaste en un nuevo chat limpio para generar el **ADR (`docs/adr/002-calculo-sla-horario-habil.md`)** y la refactorización de `src/sla_calculator.py`:
 
 ```xml
-<!-- Pega aquí tu prompt estructurado con <context>, <decision_summary>, <constraints>, <task> -->
+<decision_summary>
+Decisiones tomadas (Recomendación):
+- Iteración por bloques de días: Calcular el SLA hábil (L–V, 08:00–18:00) mediante la intersección de la ventana laboral diaria, resolviendo limpiamente fines de semana, horas nocturnas y múltiples semanas.
+- Deuda técnica controlada: Dejar los días festivos pendientes explícitamente con un # TODO para futura integración.
+Opciones descartadas:
+- Iteración minuto a minuto: Descartada por su baja eficiencia en rendimiento ante incidentes abiertos por periodos prolongados.
+- Cálculo matemático directo O(1): Descartada por su alta complejidad, propensión a errores en casos borde y baja legibilidad.
+</decision_summary>
+<context>
+<lsp_context symbol="evaluate_sla_status">
+...
+</lsp_context>
+</context>
+<constraints>
+Incidentes creados fines de semana
+Incidentes creados fuera del horario laboral
+</constraints>
+<task>
+Redacta docs/adr/002-calculo-sla-horario-habil.md , incluyendo un diagrama Mermaid ( flowchart TD o stateDiagram-v2 ) que explique el cálculo y la transición a escalamiento siguiendo la plantilla adjunta
+<task>
 ```
 
 ---
