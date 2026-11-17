@@ -19,10 +19,315 @@ Documenta al menos **3 modos de fallo o ambigüedades** de este prompt (p. ej., 
 
 ### 1.2 Uso de *Self-Consistency*, *Chain-of-Thought* y *Few-Shot Prompting*
 - ¿Cómo utilizaste *Chain-of-Thought* (`<analysis>`) y *Self-Consistency* (múltiples consultas independientes) para definir las reglas de clasificación de los casos ambiguos (`INC-1002`, `INC-1007`, `INC-1009`) y la agrupación de duplicados (`INC-1001`/`INC-1006` e `INC-1003`/`INC-1008`)?
+  - Al usar la etiqueta `<analysis>` el modelo razonó dando el siguiente paso a paso:
+    1. Evaluación de alcance y criticidad
+    2. Identificación de causas raíz y correlación
+    3. Consolidación en grupos operativos
+  Aunque esto variaba según el nivel de pensamiento utilizado.
+  - Gracias a la múltiple ejecución de chats independendientes con la misma instrucción, para casos ambiguos se clasificará el riesgo de acuerdo al impacto, por ejemplo, si afecta a un usuario o si afecta a múltiples usuarios.
 - Copia el prompt mejorado que empleaste aplicando las técnicas clásicas (`<role>`, `<domain_rules>` con justificación del *porqué*, `<examples>` *Few-Shot* y `<task>`):
 
 ```xml
-<!-- Pega aquí tu prompt estructurado con <role>, <domain_rules>, <examples>, <task> -->
+<role>
+Actúa como el encargado de gestionar los incidentes en la organización
+</role>
+
+<context>
+<lsp_context symbol="classify_incident_report">
+  <!-- 1. Definiciones de Tipos y Políticas (LSP Hover / Type Definition) -->
+# [LSP textDocument/hover type] src\models.py:12
+class SLARule:
+    """Define el acuerdo de nivel de servicio (SLA) para un nivel de severidad."""
+
+    severity: SeverityLevel
+    max_resolution_minutes: int
+    operates_24x7: bool
+    escalation_threshold_ratio: float = 0.75
+
+# [LSP textDocument/hover type] src\models.py:22
+class Incident:
+    """Representa un incidente registrado en la plataforma IncidentOps."""
+
+    incident_id: str
+    title: str
+    component: str
+    severity: SeverityLevel
+    status: IncidentStatus
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+# [LSP textDocument/hover type] src\models.py:35
+class SLAEvaluation:
+    """Resultado determinista de la evaluación de SLA de un incidente."""
+
+    incident_id: str
+    severity: SeverityLevel
+    elapsed_minutes: int
+    allowed_minutes: int
+    remaining_minutes: int
+    is_breached: bool
+    requires_escalation: bool
+
+# [LSP textDocument/hover type] src\models.py:48
+class TriageResult:
+    """Resultado estructurado producido por el clasificador de triaje con IA."""
+
+    incident_id: str
+    severity: SeverityLevel
+    component: str
+    rationale: str
+    consistency_ratio: float = 1.0
+
+# [LSP textDocument/hover symbol] src\sla_calculator.py:17
+SLA_POLICY_TABLE: Dict[SeverityLevel, SLARule] = {
+    "P0": SLARule(severity="P0", max_resolution_minutes=60, operates_24x7=True),
+    "P1": SLARule(severity="P1", max_resolution_minutes=240, operates_24x7=True),
+    "P2": SLARule(severity="P2", max_resolution_minutes=480, operates_24x7=False),
+    "P3": SLARule(severity="P3", max_resolution_minutes=1440, operates_24x7=False),
+}
+
+  <!-- 2. Definición Exacta del Símbolo (LSP GoToDefinition) -->
+# [LSP textDocument/definition] src\triage_rules.py:27
+def classify_incident_report(incident_id: str, raw_text: str) -> TriageResult:
+    """Clasifica un reporte de incidente aplicando reglas heurísticas iniciales.
+
+    DEUDA TÉCNICA INTENCIONAL:
+    - Evalúa palabras sueltas ("hoy", "urgente") antes de analizar el impacto real
+      (caída global vs. cuenta individual vs. entorno de staging).
+    - No normaliza componentes ni identifica el equipo de guardia correspondiente.
+    """
+    text_lower = raw_text.lower()
+
+    # Bug de diseño: si un usuario dice "necesito acceder hoy" por su cuenta bloqueada,
+    # se dispara como P0 antes de verificar si es una caída global o un caso individual.
+    if "urgente" in text_lower or "hoy" in text_lower or "502" in text_lower:
+        severity: SeverityLevel = "P0"
+    elif "94%" in text_lower or "timeout" in text_lower:
+        severity = "P1"
+    elif "lenta" in text_lower or "segundos" in text_lower:
+        severity = "P2"
+    else:
+        severity = "P3"
+
+    if "pago" in text_lower or "cobro" in text_lower or "tarjeta" in text_lower:
+        component = "payments-gateway"
+    elif "cuenta" in text_lower or "ingresar" in text_lower:
+        component = "auth-identity"
+    elif "postgresql" in text_lower or "conexiones" in text_lower:
+        component = "database-cluster"
+    elif "certificado" in text_lower or "tls" in text_lower:
+        component = "infra-certificates"
+    elif "botón" in text_lower or "color" in text_lower:
+        component = "frontend-ui"
+    else:
+        component = "reporting-api"
+
+    return TriageResult(
+        incident_id=incident_id,
+        severity=severity,
+        component=component,
+        rationale=f"Clasificación heurística legacy asignada a {component} ({severity}).",
+    )
+
+  <!-- 3. Referencias de Invocación en el Proyecto (LSP FindReferences) -->
+# [LSP textDocument/references] src\triage_rules.py:77
+  L76:     for item in incidents:
+  L77:         result = classify_incident_report(item["id"], item["raw_text"])
+  L78:         snippet = item["raw_text"][:45] + "..." if len(item["raw_text"]) > 45 else item["raw_text"]
+</lsp_context>
+<lsp_context symbol="sla_calculator">
+  <!-- 1. Definiciones de Tipos y Políticas (LSP Hover / Type Definition) -->
+# [LSP textDocument/hover type] src\models.py:12
+class SLARule:
+    """Define el acuerdo de nivel de servicio (SLA) para un nivel de severidad."""
+
+    severity: SeverityLevel
+    max_resolution_minutes: int
+    operates_24x7: bool
+    escalation_threshold_ratio: float = 0.75
+
+# [LSP textDocument/hover type] src\models.py:22
+class Incident:
+    """Representa un incidente registrado en la plataforma IncidentOps."""
+
+    incident_id: str
+    title: str
+    component: str
+    severity: SeverityLevel
+    status: IncidentStatus
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+# [LSP textDocument/hover type] src\models.py:35
+class SLAEvaluation:
+    """Resultado determinista de la evaluación de SLA de un incidente."""
+
+    incident_id: str
+    severity: SeverityLevel
+    elapsed_minutes: int
+    allowed_minutes: int
+    remaining_minutes: int
+    is_breached: bool
+    requires_escalation: bool
+
+# [LSP textDocument/hover type] src\models.py:48
+class TriageResult:
+    """Resultado estructurado producido por el clasificador de triaje con IA."""
+
+    incident_id: str
+    severity: SeverityLevel
+    component: str
+    rationale: str
+    consistency_ratio: float = 1.0
+
+# [LSP textDocument/hover symbol] src\sla_calculator.py:17
+SLA_POLICY_TABLE: Dict[SeverityLevel, SLARule] = {
+    "P0": SLARule(severity="P0", max_resolution_minutes=60, operates_24x7=True),
+    "P1": SLARule(severity="P1", max_resolution_minutes=240, operates_24x7=True),
+    "P2": SLARule(severity="P2", max_resolution_minutes=480, operates_24x7=False),
+    "P3": SLARule(severity="P3", max_resolution_minutes=1440, operates_24x7=False),
+}
+
+  <!-- 2. Definición Exacta del Símbolo (LSP GoToDefinition) -->
+
+
+  <!-- 3. Referencias de Invocación en el Proyecto (LSP FindReferences) -->
+
+</lsp_context>
+
+<lsp_context symbol="triage_rules">
+  <!-- 1. Definiciones de Tipos y Políticas (LSP Hover / Type Definition) -->
+# [LSP textDocument/hover type] src\models.py:12
+class SLARule:
+    """Define el acuerdo de nivel de servicio (SLA) para un nivel de severidad."""
+
+    severity: SeverityLevel
+    max_resolution_minutes: int
+    operates_24x7: bool
+    escalation_threshold_ratio: float = 0.75
+
+# [LSP textDocument/hover type] src\models.py:22
+class Incident:
+    """Representa un incidente registrado en la plataforma IncidentOps."""
+
+    incident_id: str
+    title: str
+    component: str
+    severity: SeverityLevel
+    status: IncidentStatus
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+# [LSP textDocument/hover type] src\models.py:35
+class SLAEvaluation:
+    """Resultado determinista de la evaluación de SLA de un incidente."""
+
+    incident_id: str
+    severity: SeverityLevel
+    elapsed_minutes: int
+    allowed_minutes: int
+    remaining_minutes: int
+    is_breached: bool
+    requires_escalation: bool
+
+# [LSP textDocument/hover type] src\models.py:48
+class TriageResult:
+    """Resultado estructurado producido por el clasificador de triaje con IA."""
+
+    incident_id: str
+    severity: SeverityLevel
+    component: str
+    rationale: str
+    consistency_ratio: float = 1.0
+
+# [LSP textDocument/hover symbol] src\sla_calculator.py:17
+SLA_POLICY_TABLE: Dict[SeverityLevel, SLARule] = {
+    "P0": SLARule(severity="P0", max_resolution_minutes=60, operates_24x7=True),
+    "P1": SLARule(severity="P1", max_resolution_minutes=240, operates_24x7=True),
+    "P2": SLARule(severity="P2", max_resolution_minutes=480, operates_24x7=False),
+    "P3": SLARule(severity="P3", max_resolution_minutes=1440, operates_24x7=False),
+}
+
+  <!-- 2. Definición Exacta del Símbolo (LSP GoToDefinition) -->
+
+
+  <!-- 3. Referencias de Invocación en el Proyecto (LSP FindReferences) -->
+
+</lsp_context>
+
+</context>
+<domain_rules>
+Debemos clasificar reportes de incidentes en cuatro niveles de severidad:
+- P0 (SLA 60 min, guardia 24/7): Indisponibilidad global de un servicio crítico (ej. pagos HTTP 502) o brecha activa de seguridad / fuga de datos entre organizaciones (multi-tenant).
+- P1 (SLA 240 min, guardia 24/7): Degradación severa de infraestructura compartida con riesgo inminente de caída (ej. pool de conexiones de base de datos >90%).
+- P2 (SLA 480 min, horario hábil L-V 08:00-18:00): Degradación moderada de rendimiento sin caída del servicio (ej. reportes lentos >3s) o bloqueo operativo que afecta únicamente a un usuario individual.
+- P3 (SLA 1440 min, horario hábil): Solicitudes cosméticas de UI o tareas
+preventivas de mantenimiento en entornos no productivos (staging). 
+
+Importante (Por qué): La prioridad depende del impacto real sobre la
+disponibilidad, la integridad de datos multi-tenant y el radio de afectación, nunca de palabras emocionales o de prisa subjetiva del usuario como "urgente" u "hoy".
+
+Además, se debe asignar el incidente al equipo correspondiente, la clave se llama "recommended_team":
+Backend-Core: Responsables de la lógica de negocio del sistema de pagos
+Platform-SRE: Encargado de administrar la plataforma, arquitectura e integraciones necesarias para el funcionamiento del negocio
+Data-DBA: Responsables de mantener la plataforma de datos.
+Security-IAM: Gestionan los accesos de los diferentes usuarios y se encargan de la seguridad de la plataforma
+
+Importante (Por qué): El equipo responsable asignado debe ser quien se encargue de solucionar el incidente, si el incidente no parece tener un responsable claro que no esté dentro de la lista asignada, por como equipo a "otros".
+
+También detecta casos duplicados:
+Si hay un 75% de similitud entre la descripción dos incidentes y debes marcar el incidente y los incidentes creados luego del original como duplicados con la clave "duplicate_group_key" y el valor que tomará es el "id" del incidente original.
+También ten en cuenta la severidad y el tiempo de creación entre los posibles incidente duplicados para darlo como duplicado:
+P0: Tiempo de creación menor a un día
+P1: Tiempo de creación menor a dos días
+P2: Tiempo de creación menor a tres días
+P4: Tiempo de creación menor a 4 días
+
+Importante (Por qué): Solo toma el incidente original (primer incidente creado) cómo válido a los demás, le pondrás la clave de duplicado
+</domain_rules>
+
+<examples>
+<example>
+<input>
+id: INC-1001
+Creación:  2026-11-05T08:15:00
+Descripción: URGENTE: El gateway de pagos devuelve HTTP 502 Bad Gateway en todas las transacciones con tarjeta de crédito desde hace 12 minutos. Ningún comercio puede cobrar.
+
+id: INC-1006
+Creación: 2026-11-05T13:00:00
+Descripción: Otra vez cayó la pasarela de cobros con tarjeta, a nuestros clientes les sale error 502 al intentar pagar el carrito de compras.
+</input>
+<analysis>
+1. Radio de afectación: Pasarela de pagos sin funcionar
+2. Radio de seguridad o caída: indispobilidad total
+3. Duplicado: Ambos incidentes indican que no se pueden realizar pagos por lo cuál uno de los dos es duplicado
+</analysis>
+<output>
+id: INC-1001 | severity: P0 | recommended_team: Platform-SRE 
+id: INC-1006 | severity: P0 | recommended_team: Platform-SRE | duplicate_group_key: INC-1001
+</output>
+</example>
+<example>
+<input>
+id: INC-1007
+Creación: 2026-11-05T14:30:00
+Descripción:Detectamos que al cambiar el parámetro company_id en la URL del reporte PDF se pueden visualizar facturas pertenecientes a otra organización.
+
+</input>
+<analysis>
+1. Radio de afectación: Datos de los usuarios
+2. Radio de seguridad o caída: exposición de los datos de los usuarios
+3. Duplicado: No aplica
+</analysis>
+<output>
+id: INC-1007 | severity: P0 | recommended_team: Security-IAM
+</output>
+</example>
+</examples>
+
+<task>
+Refactoriza los archivos entregados de src/triage_rules.py y src/models.py para lograr el objetivo de asignar correctamente los valores de recommended_team, duplicate_group_key y severity.
+</task>
 ```
 
 ---
