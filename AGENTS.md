@@ -25,7 +25,7 @@ There is a `pytest` suite in `tests/` for the triage capability (H001): `uv run 
 - README §3/§4 and `CONTEXT_LOG.md` describe the pre-refactor state. `sla_calculator.py` and the H001 triage capability are already refactored, so trust the code and the ADRs over README prose. `legacy/triage_rules.py` is a frozen historical copy: never treat it as a source of truth and never import it.
 
 ## Architecture gotchas
-- H001 layout: `src/domain/` (reglas puras) → `src/application/` (`IncidentService`) → `src/adapters/inbound/{rest,cli}`. `src/composition.py` es el único punto que construye clases concretas.
+- H001 layout: `src/domain/` (reglas puras) → `src/application/services.py` (`IncidentService`, `ValidationError`) → `src/adapters/inbound/{api,cli.py}`. `src/composition.py` es el único punto que construye clases concretas.
 - SLA types are still duplicated. `src/sla_calculator.py` defines its own plain-class `Incident`, `SLARule`, `SLAEvaluation`, `SeverityLevel`, and `IncidentStatus`, while `src/models.py` keeps dataclasses with the same names. `evaluate_sla_status` and `incident_repository` use the `sla_calculator` versions, so editing `models.py` does not change SLA behavior. Triage types are no longer duplicated: `TriageResult` lives only in `src/domain/triage.py`, and `src/models.py` re-exports `SeverityLevel` from `src/domain/severity.py`.
 - `models.IncidentStatus` omits `IN_PROGRESS`, even though the repository seeds/queries it and `sla_calculator` includes it.
 - SLA invariants: P0 60 min and P1 240 min run 24x7; P2 480 min and P3 1440 min count only Mon-Fri 08:00-18:00; holidays are a documented TODO. Escalation triggers at 75% of the allowance, and breach is strictly `elapsed > allowed`.

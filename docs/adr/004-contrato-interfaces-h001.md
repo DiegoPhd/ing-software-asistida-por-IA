@@ -100,7 +100,7 @@ flowchart LR
 
     subgraph APP["Aplicación"]
         SVC["IncidentService<br/>triage_incident"]
-        ERR["TriageValidationError<br/>code estable"]
+        ERR["ValidationError<br/>code estable"]
     end
 
     subgraph DOM["Dominio"]

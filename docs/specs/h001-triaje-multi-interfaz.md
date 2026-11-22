@@ -45,8 +45,7 @@ mismo enrutamiento en ambas interfaces.
 |------|-----------------|
 | `src/domain/severity.py` | `SeverityLevel` y catálogo cerrado componente → equipo (§1.5) |
 | `src/domain/triage.py` | `TriageResult` y `classify_impact(raw_text)` |
-| `src/application/incident_service.py` | `IncidentService.triage_incident` |
-| `src/application/errors.py` | `TriageValidationError` con `code` estable |
+| `src/application/services.py` | `IncidentService.triage_incident` y `ValidationError` con `code` estable |
 | `src/adapters/inbound/api/` | `app.py`, `schemas.py`, `errors.py` |
 | `src/adapters/inbound/cli.py` | Aplicación Typer con el subcomando `triage` |
 | `src/composition.py` | Raíz de composición: construye el servicio |
@@ -333,10 +332,10 @@ con `incident_id = "INC-1002"`,
 | Nivel | Ubicación | Cobertura |
 |-------|-----------|-----------|
 | Unitaria de dominio | `tests/domain/` | Tabla table-driven sobre los 10 reportes de `data/sample_incidents.json` y casos de no impacto |
-| Aplicación | `tests/application/` | `triage_incident` delega y propaga `TriageValidationError` |
-| Aceptación HTTP | `tests/adapters/test_rest.py` | 200, 422 por campo, `code` estable, `/health` |
+| Aplicación | `tests/application/` | `triage_incident` delega y propaga `ValidationError` |
+| Aceptación HTTP | `tests/adapters/test_api.py` | 200, 422 por campo, `code` estable, `/health` |
 | Aceptación CLI | `tests/adapters/test_cli.py` | Inline, `stdin`, `--file`, códigos 0/1/2, `stderr` |
-| Paridad | `tests/test_paridad.py` | Para cada reporte de muestra, JSON de HTTP == JSON de CLI |
+| Aceptación BDD y paridad | `tests/test_spec_001_triage.py` | E-01 a E-04 y JSON de HTTP == JSON de CLI para los 10 reportes |
 
 Comando oficial: `uv run pytest`.
 
