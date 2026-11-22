@@ -1,6 +1,6 @@
 # ADR-003: Adopción de Arquitectura Hexagonal (Puertos y Adaptadores) para IncidentOps
 
-- **Estado**: Aceptado
+- **Estado**: Aceptado · enmendado por ADR-004 (CLI con Typer y REST desde H001)
 - **Fecha**: 2026-11-22
 - **Autor(es)**: Equipo de Ingeniería IncidentOps
 - **Reemplaza a**: *(ninguno)*
@@ -119,3 +119,12 @@ El diagrama fija topología y fronteras: las flechas continuas son dependencias 
   - **Migración transversal**: los puntos de entrada cambian de `python -m src.triage_rules`, `src.sla_calculator` y `src.incident_repository` a los adaptadores CLI, por lo que `AGENTS.md` y `README.md` deben actualizarse en el mismo cambio; una migración a medias deja dos formas competidoras de invocar el sistema.
   - **Sin red de seguridad**: no hay suite de pruebas ni verificador de tipos, así que la equivalencia funcional debe comprobarse ejecutando los mismos escenarios de demostración antes y después.
   - **No resuelve rendimiento ni esquema**: `SELECT *`, filtrado en Python y N+1 siguen siendo deuda de Fase 2, y el esquema sigue siendo responsabilidad del adaptador.
+
+---
+
+## 5. Nota de enmienda (ADR-004)
+
+Este ADR describía la CLI con `argparse` y situaba el adaptador REST en H002. La
+Constitución §2.3 y §3.1 fijan Typer y FastAPI + Pydantic v2, y H001 exige ambas
+interfaces. `ADR-004` concreta el contrato de interfaces y prevalece en esos dos
+puntos; la topología y la regla de dependencia de este ADR siguen vigentes.

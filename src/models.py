@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Literal
 
-SeverityLevel = Literal["P0", "P1", "P2", "P3"]
+from src.domain.severity import SeverityLevel
+
 IncidentStatus = Literal["OPEN", "RESOLVED", "INVESTIGATING"]
 
 @dataclass(frozen=True)
@@ -34,14 +35,3 @@ class SLAEvaluation:
     remaining_minutes: int
     is_breached: bool
     requires_escalation: bool
-
-@dataclass(frozen=True)
-class TriageResult:
-    """Resultado estructurado producido por el clasificador de triaje con impacto real."""
-    incident_id: str
-    severity: SeverityLevel
-    component: str
-    recommended_team: str
-    rationale: str
-    duplicate_group_key: Optional[str] = None
-    consistency_ratio: float = 1.0

@@ -12,10 +12,9 @@ Este repositorio sirve como banco de pruebas práctico para la **Semana 1** de *
 - Dependencias declaradas en [`pyproject.toml`](pyproject.toml):
   - `tiktoken`: Para medir con precisión matemática el consumo de tokens BPE (`o200k_base` / `cl100k_base`) en las distintas estrategias de recolección de contexto.
 
-Para inicializar el entorno virtual e instalar `tiktoken`:
+Para inicializar el entorno virtual e instalar las dependencias:
 
 ```bash
-cd week-1/starter-project
 uv sync
 ```
 
@@ -23,7 +22,7 @@ uv sync
 
 ## Comandos Principales para la Práctica
 
-Ejecuta todos los comandos desde `week-1/starter-project/` usando `uv run`:
+Ejecuta todos los comandos desde la raíz del repositorio usando `uv run`:
 
 ### 1. Fase 1 — Auditoría de Tokens con `tiktoken`: Fuerza Bruta vs. `grep` vs. LSP
 Compara cuántos tokens reales consume leer todos los archivos del repositorio (`glob` + `read`), leer los archivos `.py` coincidentes (`grep` + `read`) o extraer únicamente la definición, firmas de tipos y referencias de un símbolo como lo hace un servidor **LSP**:
@@ -47,12 +46,41 @@ Ejecuta el escenario con deuda técnica (escaneo completo en memoria y problema 
 uv run python -m src.incident_repository
 ```
 
-### 3. Fase 3 — Auditoría del Motor de Triaje (`src/triage_rules.py`)
-Evalúa cómo el motor heurístico actual clasifica los 10 incidentes de [`data/sample_incidents.json`](data/sample_incidents.json) e identifica sus fallos de diseño:
+### 3. Hito 001 — Triaje por HTTP y CLI
+El motor de triaje vive en `src/domain/triage.py` y se expone a través de un único caso de uso (`IncidentService.triage_incident`) consumido por dos adaptadores. La operación es stateless: no lee ni escribe base de datos.
+
+**CLI (Typer):**
 
 ```bash
-uv run python -m src.triage_rules
+uv run python -m src.adapters.inbound.cli triage --incident-id INC-1001 --raw-text "El gateway de pagos devuelve HTTP 502 en todas las transacciones."
+uv run python -m src.adapters.inbound.cli triage --incident-id INC-1001 --raw-text -   # lee stdin
+uv run python -m src.adapters.inbound.cli triage --file reporte.json                  # un único objeto
 ```
+
+La salida es un JSON idéntico al de HTTP. Códigos de salida: `0` éxito, `2` entrada inválida, `1` error inesperado.
+
+**HTTP (FastAPI):**
+
+```bash
+uv run uvicorn src.adapters.inbound.rest.app:app --reload
+```
+
+```
+POST /api/v1/incidents/triage
+{"incident_id": "INC-1001", "raw_text": "..."}
+```
+
+Devuelve `200 OK` con `severity`, `component`, `recommended_team`, `rationale` y `duplicate_group_key` (siempre `null` en H001). Las entradas vacías o con solo espacios responden `422` con `application/problem+json` y un `code` estable.
+
+La especificación completa está en [`docs/specs/h001-triaje-multi-interfaz.md`](docs/specs/h001-triaje-multi-interfaz.md) y las decisiones de frontera en [`docs/adr/004-contrato-interfaces-h001.md`](docs/adr/004-contrato-interfaces-h001.md).
+
+**Pruebas:**
+
+```bash
+uv run pytest
+```
+
+El motor anterior queda archivado en `legacy/triage_rules.py` como evidencia histórica: no es invocable ni fuente de verdad.
 
 ### 4. Verificación del Cálculo Determinista de SLA (`src/sla_calculator.py`)
 Ejecuta la demostración del cálculo de SLA actual (donde se evidencia el bug de horario hábil en tickets `P2`/`P3`):
