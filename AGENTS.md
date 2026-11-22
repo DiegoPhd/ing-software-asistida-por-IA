@@ -1,5 +1,9 @@
 # AGENTS.md
 
+> **Normativa:** `docs/constitution.md` consolida los invariantes del dominio, la
+> arquitectura hexagonal (ADR-003) y la gobernanza técnica. Este archivo es la guía
+> operativa del repositorio; si hay conflicto, prevalece la Constitución.
+
 ## What this repo is
 `IncidentOps` starter project for ISIA Week 1: a small Python 3.10 + stdlib + `tiktoken` exercise, with SQLite in memory. Each "reto" is a graded exercise, and some bad behavior is deliberate.
 
