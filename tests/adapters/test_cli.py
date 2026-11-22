@@ -7,7 +7,7 @@ from typing import Any, Dict
 import pytest
 from typer.testing import CliRunner
 
-from src.adapters.inbound.cli.main import app
+from src.adapters.inbound.cli import app
 
 TEXTO_P0 = (
     "URGENTE: El gateway de pagos devuelve HTTP 502 Bad Gateway en todas las "
