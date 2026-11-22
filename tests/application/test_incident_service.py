@@ -2,14 +2,14 @@
 
 import pytest
 
-from src.application.errors import (
+from src.application.services import (
     TRIAGE_ID_DEMASIADO_LARGO,
     TRIAGE_ID_VACIO,
     TRIAGE_TEXTO_DEMASIADO_LARGO,
     TRIAGE_TEXTO_VACIO,
-    TriageValidationError,
+    IncidentService,
+    ValidationError,
 )
-from src.application.incident_service import IncidentService
 
 
 @pytest.fixture()
@@ -29,7 +29,7 @@ def test_triaje_valido_delega_en_el_dominio(servicio: IncidentService) -> None:
 
 
 def test_texto_vacio_es_rechazado(servicio: IncidentService) -> None:
-    with pytest.raises(TriageValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         servicio.triage_incident("INC-1001", "   ")
 
     assert excinfo.value.code == TRIAGE_TEXTO_VACIO
@@ -37,7 +37,7 @@ def test_texto_vacio_es_rechazado(servicio: IncidentService) -> None:
 
 
 def test_identificador_vacio_es_rechazado(servicio: IncidentService) -> None:
-    with pytest.raises(TriageValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         servicio.triage_incident("  ", "Texto con impacto real.")
 
     assert excinfo.value.code == TRIAGE_ID_VACIO
@@ -45,14 +45,14 @@ def test_identificador_vacio_es_rechazado(servicio: IncidentService) -> None:
 
 
 def test_identificador_demasiado_largo_es_rechazado(servicio: IncidentService) -> None:
-    with pytest.raises(TriageValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         servicio.triage_incident("I" * 65, "Texto con impacto real.")
 
     assert excinfo.value.code == TRIAGE_ID_DEMASIADO_LARGO
 
 
 def test_texto_demasiado_largo_es_rechazado(servicio: IncidentService) -> None:
-    with pytest.raises(TriageValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         servicio.triage_incident("INC-1001", "a" * 10_001)
 
     assert excinfo.value.code == TRIAGE_TEXTO_DEMASIADO_LARGO

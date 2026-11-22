@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.adapters.inbound.problem import build_problem
-from src.application.errors import TriageValidationError
+from src.application.services import ValidationError
 
 PROBLEM_JSON = "application/problem+json"
 TRIAGE_SOLICITUD_INVALIDA = "TRIAGE_SOLICITUD_INVALIDA"
@@ -23,7 +23,7 @@ def _respuesta(documento: Dict[str, Any]) -> JSONResponse:
 
 
 async def manejar_validacion_de_aplicacion(
-    _request: Request, exc: TriageValidationError
+    _request: Request, exc: ValidationError
 ) -> JSONResponse:
     """Traduce una regla de entrada del caso de uso a 422 problem+json."""
     return _respuesta(build_problem(exc.code, exc.field, exc.detail, status=422))

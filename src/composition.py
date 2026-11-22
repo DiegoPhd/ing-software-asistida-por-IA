@@ -1,6 +1,6 @@
 """Raíz de composición: único punto que conoce las clases concretas."""
 
-from src.application.incident_service import IncidentService
+from src.application.services import IncidentService
 
 
 def build_incident_service() -> IncidentService:

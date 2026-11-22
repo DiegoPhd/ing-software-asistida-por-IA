@@ -15,8 +15,7 @@ from src.adapters.inbound.rest.errors import (
     manejar_validacion_de_esquema,
 )
 from src.adapters.inbound.rest.schemas import TriageRequest, TriageResponse
-from src.application.errors import TriageValidationError
-from src.application.incident_service import IncidentService
+from src.application.services import IncidentService, ValidationError
 from src.composition import build_incident_service
 
 TITULO = "IncidentOps · Triaje"
@@ -43,7 +42,7 @@ def create_app(service: Optional[IncidentService] = None) -> FastAPI:
         )
 
     aplicacion.add_exception_handler(
-        TriageValidationError, manejar_validacion_de_aplicacion
+        ValidationError, manejar_validacion_de_aplicacion
     )
     aplicacion.add_exception_handler(
         RequestValidationError, manejar_validacion_de_esquema

@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 import typer
 
 from src.adapters.inbound.problem import build_problem
-from src.application.errors import TriageValidationError
+from src.application.services import ValidationError
 from src.composition import build_incident_service
 
 TRIAGE_FUENTE_TEXTO_INVALIDA = "TRIAGE_FUENTE_TEXTO_INVALIDA"
@@ -157,7 +157,7 @@ def triage(
     except _EntradaInvalida as exc:
         _emitir_error(exc.code, exc.field, exc.detail)
         raise typer.Exit(2)
-    except TriageValidationError as exc:
+    except ValidationError as exc:
         _emitir_error(exc.code, exc.field, exc.detail)
         raise typer.Exit(2)
     except Exception as exc:  # noqa: BLE001 - el borde traduce cualquier fallo a código 1
