@@ -9,12 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.adapters.inbound.rest.errors import (
+from src.adapters.inbound.api.errors import (
     manejar_http_exception,
     manejar_validacion_de_aplicacion,
     manejar_validacion_de_esquema,
 )
-from src.adapters.inbound.rest.schemas import TriageRequest, TriageResponse
+from src.adapters.inbound.api.schemas import TriageRequest, TriageResponse
 from src.application.services import IncidentService, ValidationError
 from src.composition import build_incident_service
 

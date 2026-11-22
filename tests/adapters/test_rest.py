@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from src.adapters.inbound.rest.app import create_app
+from src.adapters.inbound.api.app import create_app
 
 TEXTO_P0 = (
     "URGENTE: El gateway de pagos devuelve HTTP 502 Bad Gateway en todas las "

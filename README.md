@@ -62,7 +62,7 @@ La salida es un JSON idéntico al de HTTP. Códigos de salida: `0` éxito, `2` e
 **HTTP (FastAPI):**
 
 ```bash
-uv run uvicorn src.adapters.inbound.rest.app:app --reload
+uv run uvicorn src.adapters.inbound.api.app:app --reload
 ```
 
 ```

@@ -14,7 +14,7 @@
 - `uv run python -m src.incident_repository [--records N] [--iterations N]`
 - `uv run python -m src.sla_calculator`
 - `uv run python -m src.adapters.inbound.cli triage --incident-id INC-1001 --raw-text "..."` (o `--raw-text -` para `stdin`, `--file` para un único reporte)
-- `uv run uvicorn src.adapters.inbound.rest.app:app --reload`
+- `uv run uvicorn src.adapters.inbound.api.app:app --reload`
 
 `[tool.uv] package = false` and all imports are absolute (`from src.models import ...`), so module paths only resolve from the repo root. Ignore the README's `week-1/starter-project` path; this repo root is the starter project.
 

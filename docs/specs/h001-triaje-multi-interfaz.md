@@ -47,7 +47,7 @@ mismo enrutamiento en ambas interfaces.
 | `src/domain/triage.py` | `TriageResult` y `classify_impact(raw_text)` |
 | `src/application/incident_service.py` | `IncidentService.triage_incident` |
 | `src/application/errors.py` | `TriageValidationError` con `code` estable |
-| `src/adapters/inbound/rest/` | `app.py`, `schemas.py`, `errors.py` |
+| `src/adapters/inbound/api/` | `app.py`, `schemas.py`, `errors.py` |
 | `src/adapters/inbound/cli/` | `main.py`, `__main__.py` |
 | `src/composition.py` | Raíz de composición: construye el servicio |
 | `legacy/triage_rules.py` | Copia histórica, no invocable |

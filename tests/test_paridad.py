@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from src.adapters.inbound.cli.main import app as app_cli
-from src.adapters.inbound.rest.app import create_app
+from src.adapters.inbound.api.app import create_app
 
 RUTA = "/api/v1/incidents/triage"
 
