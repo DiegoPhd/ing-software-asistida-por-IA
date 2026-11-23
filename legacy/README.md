@@ -13,7 +13,7 @@ sistema ejecutable. **No son fuente de verdad y no deben importarse.**
 - Imprime trazas en `stdout` (`[CLASSIFY]`, `[BATCH]`, `[DUPLICATE_DETECTED]`) y
   usa `datetime.now()` implícito, ambos prohibidos en el dominio.
 - Su salida sobre `data/sample_incidents.json` puede diferir de la del servicio
-  actual; la referencia vigente es `src/domain/triage.py` y la suite `tests/`.
+  actual; la referencia vigente es `src/domain/triage_rules.py` y la suite `tests/`.
 
 Se conserva únicamente como evidencia del punto de partida. Cualquier intento de
 ejecutarlo puede fallar porque `src/models.py` ya no declara `TriageResult`.

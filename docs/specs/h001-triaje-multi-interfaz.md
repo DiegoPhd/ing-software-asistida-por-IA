@@ -44,7 +44,7 @@ mismo enrutamiento en ambas interfaces.
 | Ruta | Responsabilidad |
 |------|-----------------|
 | `src/domain/severity.py` | `SeverityLevel` y catálogo cerrado componente → equipo (§1.5) |
-| `src/domain/triage.py` | `TriageResult` y `classify_impact(raw_text)` |
+| `src/domain/triage_rules.py` | `TriageResult` y `classify_impact(raw_text)` |
 | `src/application/services.py` | `IncidentService.triage_incident` y `ValidationError` con `code` estable |
 | `src/adapters/inbound/api/` | `app.py`, `schemas.py`, `errors.py` |
 | `src/adapters/inbound/cli.py` | Aplicación Typer con el subcomando `triage` |

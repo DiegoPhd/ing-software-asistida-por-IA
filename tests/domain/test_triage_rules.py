@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.domain.triage import classify_impact
+from src.domain.triage_rules import classify_impact
 from tests.conftest import cargar_reportes_de_muestra
 
 ESPERADOS = {

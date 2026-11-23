@@ -16,7 +16,7 @@ negocio de IncidentOps, y se organiza en tres módulos canónicos:
 
 - `models.py`: `Incident`, `SLARule`, `SLAEvaluation`, `SeverityLevel`,
   `IncidentStatus` y `Team`.
-- `triage.py`: clasificación por impacto, catálogo de componentes/equipos y
+- `triage_rules.py`: clasificación por impacto, catálogo de componentes/equipos y
   detección de duplicados.
 - `sla_calculator.py`: política y cálculo de SLA.
 
@@ -321,4 +321,4 @@ práctica se corrige; no se interpreta la Constitución para acomodarla.
 esta Constitución describe obligaciones. Ante conflicto, prevalece la
 Constitución.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22
+**Version**: 1.1.1 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22

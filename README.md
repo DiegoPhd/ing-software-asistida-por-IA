@@ -30,7 +30,7 @@ src/
 │   ├── models.py           # Incident, SLARule, SLAEvaluation, resumen, errores
 │   ├── sla_calculator.py   # SLA_POLICY_TABLE, evaluate_sla_status, summarize_active_incidents
 │   ├── severity.py         # catálogo cerrado de severidades, equipos y componentes
-│   └── triage.py           # reglas puras de triaje (H001)
+│   └── triage_rules.py     # reglas puras de triaje (H001)
 ├── application/
 │   ├── ports.py            # IncidentRepositoryPort (Protocol)
 │   └── services.py         # IncidentService: triaje y resumen
@@ -70,7 +70,7 @@ uv run python -m src.context_audit --compare-formats
 
 ## 2. H001 · Triaje por HTTP y CLI
 
-El motor de triaje vive en `src/domain/triage.py` y se expone a través de un
+El motor de triaje vive en `src/domain/triage_rules.py` y se expone a través de un
 único caso de uso (`IncidentService.triage_incident`) consumido por dos
 adaptadores. La operación es stateless: no lee ni escribe base de datos.
 

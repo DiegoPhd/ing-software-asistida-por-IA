@@ -3,7 +3,7 @@
 > **Normativa:** `docs/constitution.md` consolida los invariantes del dominio, la
 > arquitectura hexagonal (ADR-003) y la gobernanza técnica. Este archivo es la guía
 > operativa del repositorio; si hay conflicto, prevalece la Constitución (versión
-> **1.1.0**).
+> **1.1.1**).
 
 ## What this repo is
 `IncidentOps` starter project for ISIA Week 1: a small Python 3.10 exercise that grew into a hexagonal layout for triage (H001) and the active-incidents summary (H002), with FastAPI + Typer over SQLite. `tiktoken` is used by the context audit. Each "reto" is a graded exercise.

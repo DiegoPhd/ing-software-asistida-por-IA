@@ -10,7 +10,7 @@ from typing import Optional
 from src.application.ports import IncidentRepositoryPort
 from src.domain.models import ActiveIncidentsSummary, TemporalInconsistencyError
 from src.domain.sla_calculator import summarize_active_incidents
-from src.domain.triage import TriageResult, classify_impact
+from src.domain.triage_rules import TriageResult, classify_impact
 
 MAX_INCIDENT_ID = 64
 MAX_RAW_TEXT = 10_000
