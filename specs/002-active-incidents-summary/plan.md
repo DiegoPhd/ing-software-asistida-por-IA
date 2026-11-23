@@ -4,7 +4,7 @@
 
 **Fecha**: 2026-11-22 | **Spec**: [spec.md](./spec.md)
 
-**Entrada**: Especificación `specs/001-active-incidents-summary/spec.md` y diseño del Hito 002 solicitado por el usuario.
+**Entrada**: Especificación `specs/002-active-incidents-summary/spec.md` y diseño del Hito 002 solicitado por el usuario.
 
 ## Resumen
 
@@ -66,7 +66,7 @@ Fase 0.*
 ### Documentación (esta funcionalidad)
 
 ```text
-specs/001-active-incidents-summary/
+specs/002-active-incidents-summary/
 ├── plan.md              # Este documento
 ├── research.md          # Fase 0 · decisiones y alternativas
 ├── data-model.md        # Fase 1 · entidades, esquema SQLite e invariantes

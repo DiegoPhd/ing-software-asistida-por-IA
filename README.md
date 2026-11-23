@@ -188,9 +188,9 @@ totales en cero.
 | 500 | 1 | `SUMMARY_ERROR_INTERNO` | Fallo inesperado sin detalles internos |
 
 Los contratos viven en
-[`specs/001-active-incidents-summary/contracts/`](specs/001-active-incidents-summary/contracts/)
+[`specs/002-active-incidents-summary/contracts/`](specs/002-active-incidents-summary/contracts/)
 y la guía de validación en
-[`specs/001-active-incidents-summary/quickstart.md`](specs/001-active-incidents-summary/quickstart.md).
+[`specs/002-active-incidents-summary/quickstart.md`](specs/002-active-incidents-summary/quickstart.md).
 
 ---
 
