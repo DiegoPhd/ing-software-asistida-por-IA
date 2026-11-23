@@ -1,0 +1,12 @@
+# Fronteras de aplicación (Constitución §VI): orquestación sin frameworks ni E/S.
+extend = "../../pyproject.toml"
+
+[lint.flake8-tidy-imports.banned-api]
+"src.adapters" = { msg = "La aplicación no puede depender de los adaptadores." }
+"src.composition" = { msg = "La aplicación no puede depender de la raíz de composición." }
+"src.models" = { msg = "El legado src/models.py se retiró; usa src.domain.models." }
+"src.sla_calculator" = { msg = "El legado src/sla_calculator.py se retiró; usa src.domain.sla_calculator." }
+"src.incident_repository" = { msg = "El legado src/incident_repository.py se retiró; usa el puerto de aplicación." }
+"fastapi" = { msg = "La aplicación no puede depender de FastAPI." }
+"typer" = { msg = "La aplicación no puede depender de Typer." }
+"sqlite3" = { msg = "La aplicación no puede depender de SQLite." }
