@@ -95,14 +95,14 @@ pasa en PostgreSQL; `docker compose up --build` deja `db` sana antes que `api`, 
 
 - [ ] T011 [P] [US2] Añadir E-05/E-06 y el escenario de ruta local a `tests/test_spec_004_runtime_health.py`: HTTP y CLI producen los mismos valores de `status`/`database` en ambos estados, y la ausencia de `DATABASE_URL` informa `connected` sobre almacenamiento efímero sin contenedores ni credenciales.
 - [ ] T012 [P] [US2] Crear `tests/adapters/test_factory.py` cubriendo toda la matriz de `data-model.md` §2, `isinstance(repository, IncidentRepositoryPort)` para SQLite y PostgreSQL, la selección de PostgreSQL con un DSN local no alcanzable (la construcción no debe exigir un servidor vivo) y `ConfigurationError` para vacío/solo espacios, `postgres://`, `sqlite://`, `sqlite:///` y otros esquemas.
-- [ ] T013 [P] [US2] Crear `tests/contract/test_repository_contract.py` parametrizado sobre SQLite y PostgreSQL (omitir PostgreSQL si falta `TEST_POSTGRES_URL`): los cinco métodos del puerto, conflicto estricto sin sobrescritura, filtrado por activos y componente, candidatos a duplicado sin similitud, texto temporal que cumpla `data-model.md` `incidents.created_at` e `incidents.resolved_at`, y ausencia de ordenación o cálculo de SLA en el adaptador.
+- [ ] T013 [P] [US2] Crear `tests/contract/test_repository_contract.py` parametrizado sobre SQLite y PostgreSQL (omitir PostgreSQL si falta `TEST_POSTGRES_URL`): los cinco métodos del puerto, conflicto estricto sin sobrescritura, filtrado por activos y componente, candidatos a duplicado sin similitud, texto temporal que cumpla `data-model.md` `incidents.created_at` e `incidents.resolved_at`, errores de validación equivalentes entre motores (identificador vacío, severidad sin política, terminal sin `resolved_at`, equipo fuera del catálogo), y ausencia de ordenación o cálculo de SLA en el adaptador.
 - [ ] T014 [US2] Añadir pruebas estructurales de Docker a `tests/test_spec_004_runtime_health.py` leyendo texto (sin PyYAML): `Dockerfile` usa `python:3.12-slim`, `uv sync --frozen`, un `USER` no root y Uvicorn; `.dockerignore` excluye `.env`, `.git`, `.venv`, cachés, pruebas y bases locales; `docker-compose.yml` define `db`/`api`, `postgres:16-alpine`, `pg_isready`, `condition: service_healthy`, un volumen nombrado y ningún puerto de base publicado al host; y `.env.example` existe con marcadores. Se ejecuta después de T011 porque ambas editan el mismo archivo de pruebas.
 - [ ] T015 [P] [US2] Actualizar `tests/adapters/test_sqlite_repository.py`: `resolve_database_path("")` y `create_repository("")` ahora lanzan `ConfigurationError`, las rutas SQLite no cambian y las escrituras nuevas persisten `incidents.created_at`/`incidents.resolved_at` con el formato de microsegundos de `data-model.md`.
 
 ### Implementación de la Historia de Usuario 2
 
 - [ ] T016 [US2] Crear `PostgresIncidentRepository` en `src/adapters/outbound/postgres_repository.py` con almacenamiento del DSN, `psycopg.connect(..., row_factory=dict_row, connect_timeout=2)` por operación, un `_ensure_schema()` perezoso protegido por cerrojo y `check_health()` que devuelve `False` ante cualquier `psycopg.Error`/`OSError` sin ejecutar DDL, según `data-model.md` `IncidentRepositoryPort.check_health`.
-- [ ] T017 [US2] Añadir a `src/adapters/outbound/postgres_repository.py` el DDL idempotente, los índices y la siembra de políticas: `sla_policies` e `incidents` exactamente como `data-model.md` `sla_policies.severity`, `sla_policies.max_resolution_minutes`, `sla_policies.operates_24x7`, `incidents.incident_id`, `incidents.title`, `incidents.component`, `incidents.severity`, `incidents.status`, `incidents.created_at`, `incidents.resolved_at`, `incidents.raw_text`, `incidents.recommended_team` e `incidents.duplicate_group_key`; crear `idx_incidents_component_status` e `idx_incidents_dup_key`; sembrar las políticas con `INSERT ... ON CONFLICT (severity) DO UPDATE` únicamente.
+- [ ] T017 [US2] Añadir a `src/adapters/outbound/postgres_repository.py` el DDL idempotente, los índices y la siembra de políticas: `sla_policies` e `incidents` exactamente como `data-model.md` `sla_policies.severity`, `sla_policies.max_resolution_minutes`, `sla_policies.operates_24x7`, `incidents.incident_id`, `incidents.title`, `incidents.component`, `incidents.severity`, `incidents.status`, `incidents.created_at`, `incidents.resolved_at`, `incidents.raw_text`, `incidents.recommended_team` e `incidents.duplicate_group_key`; crear `idx_incidents_component_status` e `idx_incidents_dup_key`; sembrar las políticas con `INSERT ... ON CONFLICT (severity) DO UPDATE` únicamente (siembra de referencia, nunca sobre `incidents`).
 - [ ] T018 [US2] Implementar `save_incident` de PostgreSQL en `src/adapters/outbound/postgres_repository.py` con la misma validación de invariantes que SQLite, un `INSERT` estricto sobre `data-model.md` `incidents.incident_id` y traducción de `UniqueViolation`/sqlstate 23505 a `IncidentAlreadyExistsError` sin modificar la fila previa.
 - [ ] T019 [US2] Implementar `get_incident`, `find_open_duplicates` y `list_active_incidents` en `src/adapters/outbound/postgres_repository.py` con la proyección explícita de diez columnas, `INNER JOIN sla_policies` donde lo usa H003, filtro de estados activos, dos variantes SQL para el filtro opcional por componente, mapeo `dict_row → Incident` con `datetime.fromisoformat`, y sin ordenación, SLA, similitud ni lógica de clave de grupo.
 - [ ] T020 [US2] Rehacer `create_repository()` y `resolve_database_path()` en `src/adapters/outbound/factory.py` conforme a `data-model.md` §2: distinguir ausencia de vacío/solo espacios, aceptar `sqlite:///:memory:`, `sqlite:///ruta` y `postgresql://`, rechazar `postgres://` y esquemas desconocidos con `ConfigurationError` antes de abrir conexión, y mantener el mensaje de error con solo el esquema (nunca el DSN).
@@ -111,7 +111,7 @@ pasa en PostgreSQL; `docker compose up --build` deja `db` sana antes que `api`, 
 - [ ] T023 [P] [US2] Crear `.dockerignore` en la raíz del repositorio excluyendo `.git`, `.env`, `.venv`, `__pycache__`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.opencode`, `.specify`, `tests/`, `specs/`, `docs/`, `data/`, `legacy/`, `*.db`, `*.log` y `CONTEXT_LOG.md`, y conservando `pyproject.toml`, `uv.lock`, `README.md` y `src/`.
 - [ ] T024 [P] [US2] Crear `.env.example` en la raíz del repositorio documentando `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL` y `API_PORT` con marcadores locales no secretos y una nota de que los caracteres especiales de la contraseña deben codificarse para URL.
 - [ ] T025 [P] [US2] Crear `docker-compose.yml` en la raíz del repositorio con `db` (`postgres:16-alpine`, volumen nombrado `incidentops_pgdata` sobre `PGDATA`, healthcheck `pg_isready`, sin puertos de host) y `api` (build desde `Dockerfile`, `DATABASE_URL` hacia `db`, `depends_on: service_healthy`, healthcheck sobre `/health` con `python -c` y `urllib.request`, `ports: "${API_PORT:-8000}:8000"`, una réplica).
-- [ ] T026 [P] [US2] Crear `tools/verify_runtime.py` con `--compose` y `--compose --resiliencia`: esperar a que ambos servicios estén sanos, comprobar 200, detener `db` y comprobar 503, reiniciar `db` y comprobar 200 sin reiniciar `api`, recrear `api` y verificar la persistencia, y hacer `docker compose down` sin `-v`; salir con código distinto de cero y un mensaje claro ante cualquier fallo.
+- [ ] T026 [P] [US2] Crear `tools/verify_runtime.py` con `--compose` y `--compose --resiliencia`: esperar a que ambos servicios estén sanos, comprobar 200, detener `db` y comprobar 503, reiniciar `db` y comprobar 200 sin reiniciar `api`, recrear `api` y verificar la persistencia; medir la latencia de `/health` con la base sana (p95 ≤ 200 ms sobre al menos 20 peticiones) y el tiempo de la respuesta 503 con `db` detenida (≤ 3 s), fallando si se excede cualquiera de los dos umbrales; y hacer `docker compose down` sin `-v`; salir con código distinto de cero y un mensaje claro ante cualquier fallo.
 
 **Punto de control**: ambos motores cumplen el puerto, el despliegue de referencia arranca ordenado y
 la salud se recupera sola; H001–H003 conservan su comportamiento.
@@ -123,9 +123,18 @@ la salud se recupera sola; H001–H003 conservan su comportamiento.
 **Propósito**: documentación, trazabilidad y evidencia final.
 
 - [ ] T027 [P] Actualizar `README.md`, `AGENTS.md` y `docs/ROADMAP.md` con los comandos de H004 (`health`, Compose, `DATABASE_URL`), el código de error nuevo `CONFIG_DATABASE_URL_INVALIDA`, el adaptador PostgreSQL y H004 marcado como entregado.
-- [ ] T028 [P] Actualizar la traza de pruebas de `specs/004-postgres-container-runtime/spec.md` de `tests/test_bdd_h004_salud_runtime.py` a `tests/test_spec_004_runtime_health.py`, conservando los nombres `test_bdd_e01…e06`.
+- [ ] T028 [P] Verificar que la traza de pruebas de `specs/004-postgres-container-runtime/spec.md` apunta a `tests/test_spec_004_runtime_health.py` y conserva los nombres `test_bdd_e01…e06`; corregir solo si quedara alguna referencia residual.
 - [ ] T029 Ejecutar `uv run ruff check src/` y `uv run pytest -q`; corregir cualquier fallo de frontera (`TID251`/`TID252`), formato o paridad sin añadir `noqa` ni debilitar pruebas (rutas: `src/`, `tests/`).
-- [ ] T030 Validar [quickstart.md](./quickstart.md) con Docker disponible: `uv run python tools/verify_runtime.py --compose --resiliencia` y los escenarios de persistencia y configuración inválida; registrar la evidencia (arranque ordenado, 200→503→200, datos conservados y ausencia de credenciales) en el PR.
+- [ ] T030 Validar [quickstart.md](./quickstart.md) con Docker disponible: `uv run python tools/verify_runtime.py --compose --resiliencia` y los escenarios de persistencia y configuración inválida; registrar la evidencia (arranque ordenado, 200→503→200, datos conservados, latencia de `/health` con p95 ≤ 200 ms, tiempo de 503 ≤ 3 s y ausencia de credenciales) en el PR.
+
+---
+
+## Fase 6: Evidencia de rendimiento y regresiones transversales
+
+**Propósito**: cerrar los objetivos no funcionales que las pruebas de aceptación con dobles no pueden medir.
+
+- [ ] T031 [P] Registrar la evidencia de rendimiento y empaquetado: ejecutar `uv run python tools/benchmark_summary.py --records 10000 --iterations 20` y comparar con los objetivos de H003 (RNF-006/SC-006); medir el tamaño de la imagen con `docker image inspect --format "{{.Size}}"` y exigir ≤ 400 MB (RNF-007); y cronometrar `docker compose up --build` para comprobar ≤ 60 s la primera vez y ≤ 20 s después (RNF-003), en el runner de referencia definido en la spec.
+- [ ] T032 [P] Añadir una prueba de regresión de negocio con el motor no disponible (doble que lanza un error de conexión) en `tests/adapters/test_api.py` y `tests/test_spec_004_runtime_health.py`: triaje, resumen, alta y SLA conservan el error inesperado genérico (500 HTTP y salida 1 en consola), sin códigos nuevos y sin filtrar detalles internos (FR-012 y caso límite correspondiente).
 
 ---
 
@@ -140,6 +149,7 @@ la salud se recupera sola; H001–H003 conservan su comportamiento.
 - **US2 (T011–T026)**: depende de Fundamentos. Su núcleo (fábrica y adaptador) puede empezar en
   paralelo con US1 si hay capacidad, pero E-05/E-06 y la recuperación necesitan US1 terminada.
 - **Pulido (T027–T030)**: depende de que las historias deseadas estén completas.
+- **Evidencia (T031–T032)**: depende de US1 y US2 completas; T031 requiere Docker y T032 no.
 
 ### Dependencias entre historias
 
@@ -199,6 +209,13 @@ T025 · docker-compose.yml          │
 T026 · verify_runtime.py           ─┘
 ```
 
+### Evidencia y regresiones
+
+```text
+T031 · rendimiento y empaquetado ─┐
+T032 · negocio con motor caído    ─┴─ archivos distintos
+```
+
 ---
 
 ## Estrategia de implementación
@@ -216,14 +233,14 @@ T026 · verify_runtime.py           ─┘
 1. Preparación + Fundamentos → contrato y caso de uso listos.
 2. US1 → salud REST/CLI (MVP).
 3. US2 → PostgreSQL, fábrica, Compose y resiliencia; la paridad se demuestra con la suite de contrato.
-4. Pulido → documentación y evidencia de quickstart. Cada paso deja la suite anterior en verde.
+4. Pulido y evidencia → documentación, quickstart, rendimiento (T031) y regresiones transversales (T032). Cada paso deja la suite anterior en verde.
 
 ### Estrategia de equipo en paralelo
 
 1. Equipo completo: Preparación + Fundamentos.
 2. Después: una persona en US1 (inbound) y otra en US2 (adaptador y fábrica); el empaquetado Docker
    puede ir en paralelo con archivos propios.
-3. La integración final requiere US1 para la paridad y la recuperación, y valida todo con T029/T030.
+3. La integración final requiere US1 para la paridad y la recuperación, valida todo con T029/T030 y cierra la evidencia con T031/T032.
 
 ---
 
@@ -235,4 +252,5 @@ T026 · verify_runtime.py           ─┘
 - No se modifica `src/domain/` ni se añaden dependencias fuera de `psycopg[binary]`.
 - No se usa `ON CONFLICT DO UPDATE` sobre `incidents`; solo en la siembra de `sla_policies`.
 - No se añaden credenciales, DSN ni estado persistente a la imagen.
+- T031/T032 cierran RNF-002/RNF-003/RNF-006/RNF-007 y el caso límite de negocio con el motor caído.
 - Confirmar `uv run ruff check src/` y `uv run pytest -q` antes de cada punto de control.

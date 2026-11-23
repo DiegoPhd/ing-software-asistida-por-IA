@@ -94,17 +94,17 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   sentencia y traduce la violación de unicidad (`sqlstate 23505` / `psycopg.errors.UniqueViolation`)
   a `IncidentAlreadyExistsError`. No existe ningún `UPSERT` sobre `incidents`.
 - **Razón**: el adaptador SQLite ya siembra políticas con `INSERT OR REPLACE`, que no es la ruta de
-  negocio; su equivalente semántico en PostgreSQL es `ON CONFLICT DO UPDATE`. La Constitución y
-  ADR-007 prohíben `REPLACE`, `UPSERT` y `ON CONFLICT DO UPDATE` **en la ruta de alta** para impedir
-  sobrescrituras silenciosas; la siembra de políticas queda fuera de esa ruta, igual que la siembra
-  sintética del benchmark. Esta lectura se documenta aquí y se cubre con una prueba de conflicto que
-  verifica que el incidente previo no se modifica.
+  negocio; su equivalente semántico en PostgreSQL es `ON CONFLICT DO UPDATE`. La Constitución
+  (aclaración 1.2.1) y ADR-007 prohíben `REPLACE`, `UPSERT` y `ON CONFLICT DO UPDATE` **en la ruta de
+  alta** para impedir sobrescrituras silenciosas; la siembra de políticas queda fuera de esa ruta,
+  igual que la siembra sintética del benchmark. Esta lectura se documenta aquí y se cubre con una
+  prueba de conflicto que verifica que el incidente previo no se modifica.
 - **Alternativas consideradas**: (a) `ON CONFLICT DO NOTHING` en la siembra: no actualizaría una
   política cambiada y divergiría del `INSERT OR REPLACE` de SQLite; (b) borrar e insertar políticas:
   dos sentencias y una ventana sin política; (c) pre-consultar y decidir en Python: carrera y más
   viajes. Se descartan.
-- **Trazabilidad**: la decisión no requiere enmendar la Constitución ni ADR-007; se registra como
-  aclaración de alcance en el PR y en este documento.
+- **Trazabilidad**: la decisión requiere la aclaración PATCH 1.2.1 de la Constitución (PR separado) y
+  no modifica ADR-007; se registra aquí y en el PR.
 
 ## D6 · Mapeo fila → entidad, validación y duplicación deliberada
 

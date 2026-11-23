@@ -262,9 +262,14 @@ evadir el catálogo. Añadir o retirar un equipo exige ADR y pruebas de aceptaci
 - `created_at` y `resolved_at` se persisten como texto ISO 8601 naive normalizado
   a microsegundos (`YYYY-MM-DDTHH:MM:SS.ffffff`) en ambos motores. NO se usan
   `TIMESTAMP`, `TIMESTAMPTZ`, épocas numéricas ni zonas horarias del servidor.
-- La ruta de alta usa `INSERT` estricto; `REPLACE`, `UPSERT` y
-  `ON CONFLICT DO UPDATE` están prohibidos. La violación de unicidad se traduce al
-  mismo error de aplicación en ambos motores.
+- La ruta de alta de `incidents` usa `INSERT` estricto; `REPLACE`, `UPSERT` y
+  `ON CONFLICT DO UPDATE` están prohibidos **en esa ruta**. La violación de unicidad
+  se traduce al mismo error de aplicación en ambos motores.
+- La siembra idempotente de tablas de referencia (`sla_policies`) queda fuera de esa
+  prohibición: puede usar `INSERT OR REPLACE` (SQLite) o
+  `INSERT ... ON CONFLICT (severity) DO UPDATE` (PostgreSQL) para mantener ambas
+  copias sincronizadas con `SLA_POLICY_TABLE`, siempre que nunca se aplique a
+  `incidents`.
 - El DDL y los índices son idempotentes y equivalentes por motor; las consultas
   nuevas usan columnas explícitas y su plan se verifica con el motor real.
 - El cerrojo por componente es de proceso. La topología de referencia mantiene una
@@ -346,4 +351,4 @@ práctica se corrige; no se interpreta la Constitución para acomodarla.
 esta Constitución describe obligaciones. Ante conflicto, prevalece la
 Constitución.
 
-**Version**: 1.2.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-23
+**Version**: 1.2.1 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-23

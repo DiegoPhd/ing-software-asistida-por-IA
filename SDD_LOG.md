@@ -22,7 +22,12 @@
 ### 1.2 Feature `004-postgres-container-runtime`
 
 - **Ambigüedades y RNF aclarados antes de diseñar PostgreSQL/Compose**: `[3+ puntos concretos]`
-
+    - **C1 (CRITICAL)**: la siembra ON CONFLICT DO UPDATE de sla_policies choca con la prohibición textual de UPSERT/ON CONFLICT DO UPDATE en el contrato de persistencia (§Contrato de persistencia, :265-267). El plan la reinterpreta en lugar de enmendar la Constitución. Es el único bloqueo constitucional.
+    - **I5 (MEDIUM)**: la validación de invariantes replicada en el adaptador PostgreSQL roza el Principio I (reglas únicas en src/domain/), aunque sigue el precedente aceptado de H003 y ADR-007 §4; conviene documentarlo o centralizarlo.
+    - **Antes**: - **RNF-003 (arranque reproducible)**: desde un clon limpio, `docker compose up --build` DEBE dejar ambos servicios sanos en ≤ 60 s la primera vez y ≤ 20 s en arranques posteriores, en un host de desarrollo estándar.
+    **Después**: - **RNF-003 (arranque reproducible)**: desde un clon limpio y con las imágenes base ya descargadas, `docker compose up --build` DEBE dejar ambos servicios sanos en ≤ 60 s la primera vez y ≤ 20 s en arranques posteriores, medidos en el runner de CI de referencia (4 vCPU, 8 GB RAM, SSD y red local). La descarga inicial de imágenes se mide aparte y no cuenta para el umbral.
+    - **Antes**: - **RNF-011 (portabilidad)**: el despliegue DEBE funcionar con una sola orden en Windows, macOS y Linux con Docker, sin rutas absolutas del host ni pasos manuales específicos.
+    **Después**: - **RNF-011 (portabilidad)**: el despliegue DEBE funcionar con una sola orden en Windows 11, macOS 14 y Ubuntu 22.04 con Docker Compose v2, sin rutas absolutas del host ni pasos manuales específicos. La verificación automatizada cubre Ubuntu en CI; Windows y macOS se validan con `quickstart.md` antes de cerrar el hito.
 ---
 
 ## 2. Comparación Crítica: SDD Manual (Iteración 1) vs. GitHub Spec Kit (Iteración 2 y Retos)
@@ -46,6 +51,8 @@
 ## 3. *Commands* vs. *Agent Skills*, Arquitectura Hexagonal, ADRs y Uso de *Reasoning*
 
 - **Diferencia entre *Commands* (`/speckit.*`) y *Agent Skills* (`hexagonal-architecture`, `bdd-acceptance`, `adr-writer`)**: Explica cómo OpenCode carga las *skills* bajo demanda y por qué fue necesario seguir el orden causal ADR $\rightarrow$ Constitución $\rightarrow$ Hito tanto en clase (`ADR-003` antes de `docs/constitution.md`) como en el Reto 2 (`ADR-004` y actualización de `.specify/memory/constitution.md` antes de especificar e implementar el Hito `004`).
+    - OpenCode primerametnte revisar en diferentes directorios (`~/.config/opencode/skills`, `.opencode/skills`) las skills que tenga disponible en el proyecto, luego el usuario invoca la skill asociada, ya sea con una instrucción o simplemente con `@skill-id` enseguida se empiezan a ejecutar de forma ordenada las instrucciones de la skill.
+    - 
 - **Valor de la Arquitectura Hexagonal**: Explica cómo compartir `IncidentService` e `IncidentRepositoryPort` facilitó exponer FastAPI, Typer y el adaptador PostgreSQL sin tocar el dominio (y cómo prepara la incorporación de futuros adaptadores).
 - **Uso intencional de *Reasoning / Extended Thinking* en OpenCode**: ¿En qué comandos (`/speckit.clarify`, `/speckit.plan`, `/speckit.analyze`) aportó mayor valor el razonamiento extendido y en cuáles (`/speckit.implement`) resultó más eficiente un modelo rápido?
     - En este caso no aplica, dado que siempre utilicé el mismo modelo con el mismo esfuerzo el cual fue DeepSeek V4.1 Flash con esfuerzo en High

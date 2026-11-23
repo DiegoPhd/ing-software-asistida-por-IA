@@ -66,7 +66,7 @@ estaba disponible, en la primera operación de negocio.
 | `operates_24x7` | `INTEGER` | `NOT NULL`; `1`/`0` como en SQLite |
 
 - Siembra desde `SLA_POLICY_TABLE` con `INSERT ... ON CONFLICT (severity) DO UPDATE`. Es siembra, no
-  ruta de alta (ver [research.md](./research.md) D5).
+  ruta de alta (ver [research.md](./research.md) D5 y la aclaración 1.2.1 de la Constitución).
 
 ### `incidents`
 

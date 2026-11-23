@@ -81,10 +81,12 @@ severidades, 2 estados activos; una capacidad nueva (salud) × 2 canales; dos mo
 
 *PUERTA: debe pasar antes de la Fase 0. Reevaluada tras el diseño de la Fase 1.*
 
-No se requiere enmienda. La Constitución vigente es la **1.2.0** (la spec cita 1.1.1; prevalece el
-archivo `.specify/memory/constitution.md`). ADR-007 ya autoriza el adaptador PostgreSQL y ADR-008 la
-topología Compose; el Principio IV ya declara `check_health` en el puerto, por lo que H004 solo añade
-el caso de uso y los adaptadores.
+Requiere una enmienda PATCH de la Constitución (**1.2.0 → 1.2.1**) para acotar explícitamente la
+prohibición de `REPLACE`/`UPSERT`/`ON CONFLICT DO UPDATE` a la ruta de alta de `incidents` y dejar
+fuera la siembra idempotente de `sla_policies`. La enmienda se tramita en un PR separado y no cambia
+obligaciones de negocio. ADR-007 ya autoriza el adaptador PostgreSQL y ADR-008 la topología Compose;
+el Principio IV ya declara `check_health` en el puerto, por lo que H004 solo añade el caso de uso y
+los adaptadores.
 
 | Principio / invariante | Estado | Evidencia o acción requerida |
 |---|---|---|
@@ -95,11 +97,11 @@ el caso de uso y los adaptadores.
 | V. Stack gobernado | PASS | `psycopg[binary]` está aprobado por ADR-007 y la Constitución §V; Docker Compose por ADR-008. No se añaden ORM, migrador, pooler ni lector YAML. |
 | VI. Fronteras verificadas con Ruff | PASS | Se añaden `psycopg`, `psycopg2` y `src.adapters.outbound.postgres_repository` a las prohibiciones de `inbound/` y de `inbound/api/`. Dominio y aplicación ya los prohíben. `uv run ruff check src/` debe pasar sin `noqa` nuevos. |
 | VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_004_runtime_health.py` cubre E-01…E-06 con dobles; `tests/adapters/test_factory.py` y `tests/contract/test_repository_contract.py` cubren la matriz de DSN y la paridad. Sin `sleep` en pruebas de dominio. |
-| Contrato de persistencia entre motores | PASS con precisión | La ruta de alta usa `INSERT` estricto y traduce `UniqueViolation` a `IncidentAlreadyExistsError`. `ON CONFLICT DO UPDATE` se usa **solo** en la siembra idempotente de `sla_policies`, que no es la ruta de alta (equivale al `INSERT OR REPLACE` de siembra de SQLite) y queda fuera de la prohibición de ADR-007 §3e. Ver [research.md](./research.md) D5. |
+| Contrato de persistencia entre motores | PASS con precisión | La ruta de alta usa `INSERT` estricto y traduce `UniqueViolation` a `IncidentAlreadyExistsError`. `ON CONFLICT DO UPDATE` se usa **solo** en la siembra idempotente de `sla_policies`, que no es la ruta de alta (equivale al `INSERT OR REPLACE` de siembra de SQLite) y queda fuera de la prohibición tras la aclaración 1.2.1 de la Constitución (ADR-007 §3e). Ver [research.md](./research.md) D5. |
 | Invariantes de SLA | PASS | No se tocan la política, el 75 %, la ventana hábil ni el incumplimiento estricto. El adaptador no calcula SLA. |
 | Estados del incidente | PASS | Sin cambios; el adaptador PostgreSQL valida los mismos estados y `resolved_at` en terminales. |
 | Deuda deliberada | PASS | Los festivos siguen sin descontarse (ADR-002); `legacy/triage_rules.py` sigue congelado; no se reintroduce deuda de H002; `CONTEXT_LOG.md` no se reescribe. |
-| Gobernanza documental | PASS | No hace falta ADR nuevo: ADR-007 y ADR-008 ya registran las decisiones. Se actualizan `AGENTS.md`, `README.md` y `docs/ROADMAP.md` (H004 → entregado) en el mismo PR. |
+| Gobernanza documental | PASS | No hace falta ADR nuevo: ADR-007 y ADR-008 ya registran las decisiones. La aclaración PATCH 1.2.1 de la Constitución se tramita en un PR separado. Se actualizan `AGENTS.md`, `README.md` y `docs/ROADMAP.md` (H004 → entregado) en el mismo PR. |
 
 **Reevaluación tras el diseño de la Fase 1**: se mantiene. Los contratos nuevos (salud y DSN) no
 introducen capas ni tipos de dominio paralelos; `inbound/health_contract.py` es un contrato de
@@ -211,7 +213,8 @@ Puntos contractuales fijados:
   `{"status":"error","database":"unavailable"}`; `Content-Type: application/json` y
   `Cache-Control: no-store` en ambos; sin autenticación, sin caché y sin detalles internos.
 - **Salud CLI**: `health` escribe el mismo documento en stdout y sale `0`/`1`. Configuración inválida:
-  `problem+json` en stderr con `CONFIG_DATABASE_URL_INVALIDA`, salida `2`, sin documento ni traza.
+  `problem+json` en stderr con `CONFIG_DATABASE_URL_INVALIDA`, salida `2`, sin documento ni traza. Un
+  fallo interno inesperado del comando sale `1` con `HEALTH_ERROR_INTERNO` en stderr (FR-003).
 - **Configuración**: variable ausente o `sqlite:///:memory:` → memoria; `sqlite:///ruta` → archivo;
   `postgresql://…` → PostgreSQL; vacío, solo espacios, `postgres://` o cualquier otro esquema →
   `ConfigurationError` antes de abrir conexión. Único intérprete: `factory.py`.
@@ -238,38 +241,39 @@ Puntos contractuales fijados:
 | E-06 (desarrollo local sin base dedicada) | `::test_bdd_e06_*` |
 | C-01 (selección por DSN y puerto) | `tests/adapters/test_factory.py` |
 | C-02 (contrato SQLite/PostgreSQL) | `tests/contract/test_repository_contract.py` |
-| O-01 / O-02 (Compose y resiliencia) | `tools/verify_runtime.py --compose [--resiliencia]` |
+| O-01 / O-02 (Compose, resiliencia y latencia) | `tools/verify_runtime.py --compose [--resiliencia]` |
 
-> La spec referencia `tests/test_bdd_h004_salud_runtime.py`, pero el nombre solicitado para este
-> hito es `tests/test_spec_004_runtime_health.py`, coherente con `test_spec_001…003`. El archivo nuevo
-> conserva los nombres `test_bdd_e01…e06`; la traza de la spec se actualiza en el mismo PR.
+> El archivo de pruebas es `tests/test_spec_004_runtime_health.py`, coherente con `test_spec_001…003`,
+> y conserva los nombres `test_bdd_e01…e06`. La traza de la spec ya apunta a ese archivo.
 
 ## Orden de Implementación
 
-1. **Aplicación**: añadir `IncidentService.check_health()` que delega en
+1. **Pruebas primero (TDD)**: escribir y ver fallar `test_spec_004_runtime_health.py` (E-01…E-06, CLI
+   y estructura Docker), `test_factory.py`, `test_repository_contract.py` y las actualizaciones de
+   `test_api.py`, `test_sqlite_repository.py` y `test_services.py`.
+2. **Aplicación**: añadir `IncidentService.check_health()` que delega en
    `IncidentRepositoryPort.check_health()`; cubrirlo con un doble en `tests/application/test_services.py`.
-2. **Salida · fábrica**: separar ausencia de vacío en `factory.py`, rechazar `postgres://`, añadir la
+3. **Salida · fábrica**: separar ausencia de vacío en `factory.py`, rechazar `postgres://`, añadir la
    rama `postgresql://` y conservar `resolve_database_path` como helper de SQLite. Trasladar la matriz
    de DSN a `tests/adapters/test_factory.py` y actualizar las expectativas antiguas (`""` ya no es
    memoria y `postgresql://` ya no es error).
-3. **Salida · PostgreSQL**: crear `postgres_repository.py` con `dict_row`, DDL idempotente, índices,
+4. **Salida · PostgreSQL**: crear `postgres_repository.py` con `dict_row`, DDL idempotente, índices,
    siembra con `ON CONFLICT DO UPDATE`, `INSERT` estricto con traducción de unicidad, lecturas con
    columnas explícitas y `check_health` acotado. Replicar la validación y el mapeo sin importar SQLite.
-4. **Salida · SQLite**: normalizar `created_at`/`resolved_at` a microsegundos para cumplir FR-009 sin
+5. **Salida · SQLite**: normalizar `created_at`/`resolved_at` a microsegundos para cumplir FR-009 sin
    cambiar los `datetime` leídos.
-5. **Entrada · contrato de salud**: crear `health_contract.py`; registrar `GET /health` con 200/503,
+6. **Entrada · contrato de salud**: crear `health_contract.py`; registrar `GET /health` con 200/503,
    `no-store` y versión `0.4.0`; añadir `health` a la CLI con sus códigos de salida; añadir los títulos
    `CONFIG_DATABASE_URL_INVALIDA` y `HEALTH_ERROR_INTERNO` a `problem.py`.
-6. **Fronteras**: ampliar `inbound/ruff.toml` y `api/ruff.toml` con `psycopg`, `psycopg2` y
+7. **Fronteras**: ampliar `inbound/ruff.toml` y `api/ruff.toml` con `psycopg`, `psycopg2` y
    `src.adapters.outbound.postgres_repository`.
-7. **Runtime**: crear `Dockerfile`, `.dockerignore`, `docker-compose.yml` y `.env.example`; verificar
+8. **Runtime**: crear `Dockerfile`, `.dockerignore`, `docker-compose.yml` y `.env.example`; verificar
    `uv.lock` con `uv sync --frozen`.
-8. **Pruebas**: escribir `test_spec_004_runtime_health.py` (E-01…E-06, CLI y estructura Docker),
-   `test_factory.py`, `test_repository_contract.py` y actualizar `test_api.py`.
 9. **Herramientas y documentación**: crear `tools/verify_runtime.py`; actualizar `README.md`,
    `AGENTS.md` y `docs/ROADMAP.md`; registrar la traza final de la spec.
-10. **Validación**: `uv run ruff check src/`, `uv run pytest -q` y, si Docker está disponible,
-    `uv run python tools/verify_runtime.py --compose --resiliencia`.
+10. **Validación y evidencia**: `uv run ruff check src/`, `uv run pytest -q` y, si Docker está disponible,
+    `uv run python tools/verify_runtime.py --compose --resiliencia`; registrar p95 de `/health` y
+    tiempo de 503, benchmark de 10 000 incidentes, tamaño de imagen ≤ 400 MB y tiempos de arranque.
 
 ## Seguimiento de Complejidad
 
@@ -312,5 +316,11 @@ Puntos contractuales fijados:
   esquemas no admitidos fallan sin abrir conexión.
 - La suite de contrato pasa en SQLite y, con motor disponible, en PostgreSQL con cero divergencias.
 - `tools/verify_runtime.py --compose --resiliencia` deja evidencia de arranque ordenado, 200→503→200,
-  persistencia tras recrear la API y reiniciar la base, y ausencia de credenciales en documentos.
-- `README.md`, `AGENTS.md` y `docs/ROADMAP.md` actualizados; ADR-007/ADR-008 no requieren enmienda.
+  persistencia tras recrear la API y reiniciar la base, latencia p95 ≤ 200 ms con la base sana,
+  503 ≤ 3 s con la base caída y ausencia de credenciales en documentos.
+- La evidencia de rendimiento se registra y cumple RNF-003/RNF-006/RNF-007: arranque ≤ 60 s/≤ 20 s,
+  benchmark de 10 000 incidentes sin regresión e imagen ≤ 400 MB.
+- Una prueba de regresión demuestra que triaje, resumen, alta y SLA mantienen el error genérico
+  (500 HTTP / salida 1) con el motor caído, sin códigos nuevos.
+- `README.md`, `AGENTS.md` y `docs/ROADMAP.md` actualizados; ADR-007/ADR-008 no requieren enmienda y
+  la aclaración 1.2.1 de la Constitución se tramita en PR separado.

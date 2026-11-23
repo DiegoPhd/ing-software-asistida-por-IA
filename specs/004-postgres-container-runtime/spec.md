@@ -20,7 +20,7 @@
 - Q: ¿Se migran los datos SQLite existentes? → A: no. No hay herramienta de migraciones en este hito.
 - Q: ¿Qué debe informar la salud cuando la base conecta pero el esquema aún no existe? → A: sólo conectividad mediante una consulta trivial; el esquema se asegura de forma idempotente al componer el repositorio cuando la base responde y, si no estaba disponible, en la primera operación de negocio, nunca desde la comprobación de salud.
 - Q: ¿Qué ocurre si `DATABASE_URL` está definida pero vacía? → A: es un error de configuración antes de abrir conexión; sólo la ausencia total de la variable usa memoria, para que un despliegue incompleto no pierda datos en silencio.
-- Q: ¿Qué devuelven las operaciones de negocio con la base caída? → A: sin cambios: el error inesperado genérico ya existente (500 en HTTP y salida 1 en consola, sin detalles internos); el 503 queda reservado a `/health` y no se añaden códigos nuevos.
+- Q: ¿Qué devuelven las operaciones de negocio con la base caída? → A: sin cambios: el error inesperado genérico ya existente (500 en HTTP y salida 1 en consola, sin detalles internos); el 503 queda reservado a `/health` y no se añaden códigos nuevos a las operaciones de negocio. La única excepción es `HEALTH_ERROR_INTERNO`, reservado al fallo interno del comando `health` (FR-003).
 - Q: ¿Qué salida y código de salida produce `health` con una configuración inválida? → A: `application/problem+json` en stderr con el código estable `CONFIG_DATABASE_URL_INVALIDA` y salida 2, sin documento de salud y sin traza; el proceso de la API no arranca.
 
 ## Escenarios de Usuario y Pruebas *(obligatorio)*
@@ -40,7 +40,7 @@ Como operador de guardia o responsable de despliegue, necesito consultar la salu
 3. **Dado** un servicio en ejecución cuya base de datos no responde, **cuando** un operador consulta `GET /health`, **entonces** recibe 503 Service Unavailable con `{"status": "error", "database": "unavailable"}`, sin traza, credenciales ni detalles internos.
 4. **Dado** el mismo servicio con la base de datos no disponible, **cuando** el operador ejecuta `health` en la consola, **entonces** la consola escribe el mismo documento de indisponibilidad y termina con código de salida 1.
 
-**Trazabilidad de pruebas**: E-01 (`tests/test_bdd_h004_salud_runtime.py::test_bdd_e01_el_servicio_confirma_que_su_base_responde`), E-02 (`::test_bdd_e02_la_consola_confirma_la_misma_conectividad`), E-03 (`::test_bdd_e03_una_base_inaccesible_se_informa_como_no_disponible`), E-04 (`::test_bdd_e04_la_consola_informa_la_indisponibilidad`).
+**Trazabilidad de pruebas**: E-01 (`tests/test_spec_004_runtime_health.py::test_bdd_e01_el_servicio_confirma_que_su_base_responde`), E-02 (`::test_bdd_e02_la_consola_confirma_la_misma_conectividad`), E-03 (`::test_bdd_e03_una_base_inaccesible_se_informa_como_no_disponible`), E-04 (`::test_bdd_e04_la_consola_informa_la_indisponibilidad`).
 
 ---
 
@@ -58,10 +58,10 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 2. **Dado** un entorno de desarrollo sin base de datos dedicada configurada, **cuando** se arranca el servicio y se consulta su salud, **entonces** informa `connected` usando almacenamiento local efímero, sin exigir contenedores ni credenciales.
 3. **Dado** un clon limpio y una sola orden de arranque del despliegue de referencia, **cuando** ambos servicios terminan de iniciar, **entonces** la base queda sana antes que la API, la API queda sana y responde al chequeo de salud sin arranques degradados silenciosos.
 4. **Dado** el despliegue de referencia con datos registrados, **cuando** se reinicia la API, se recrea el contenedor de la API o se reinicia la base sin eliminar el volumen, **entonces** los datos se conservan íntegros y consultables.
-5. **Dado** el despliegue de referencia con la base detenida, **cuando** la base vuelve a estar disponible, **entonces** la salud informa 200 en pocos segundos sin reiniciar la API y el contenedor vuelve a estar sano sin intervención manual.
+5. **Dado** el despliegue de referencia con la base detenida, **cuando** la base vuelve a estar disponible, **entonces** la salud informa 200 en ≤ 5 s sin reiniciar la API y el contenedor vuelve a estar sano sin intervención manual.
 6. **Dado** un despliegue con la misma configuración, **cuando** se ejecutan triaje, resumen, alta y SLA por HTTP y por consola, **entonces** los documentos, los valores y los códigos de error son idénticos a los de la ruta local con almacenamiento efímero.
 
-**Trazabilidad de pruebas**: E-05 (`tests/test_bdd_h004_salud_runtime.py::test_bdd_e05_ambos_canales_coinciden_al_informar_la_salud`, parametrizada conectado / no disponible), E-06 (`::test_bdd_e06_el_desarrollo_local_sigue_funcionando_sin_base_dedicada`), C-01 (`tests/adapters/test_factory.py::test_selecciona_adaptador_por_database_url`), C-02 (`tests/contract/test_repository_contract.py`, parametrizado SQLite/PostgreSQL), O-01 (`tools/verify_runtime.py --compose`), O-02 (`tools/verify_runtime.py --compose --resiliencia`).
+**Trazabilidad de pruebas**: E-05 (`tests/test_spec_004_runtime_health.py::test_bdd_e05_ambos_canales_coinciden_al_informar_la_salud`, parametrizada conectado / no disponible), E-06 (`::test_bdd_e06_el_desarrollo_local_sigue_funcionando_sin_base_dedicada`), C-01 (`tests/adapters/test_factory.py::test_selecciona_adaptador_por_database_url`), C-02 (`tests/contract/test_repository_contract.py`, parametrizado SQLite/PostgreSQL), O-01 (`tools/verify_runtime.py --compose`), O-02 (`tools/verify_runtime.py --compose --resiliencia`).
 
 ---
 
@@ -73,7 +73,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **Arranque con la base caída**: el servicio levanta y responde 503; ninguna operación de negocio se ejecuta contra un esquema no inicializado y el arranque no se bloquea ni se reintenta en bucle infinito.
 - **Conexión sana con esquema ausente**: la salud informa `connected` porque la conectividad es real; la comprobación no ejecuta DDL ni exige las tablas, y el esquema se asegura al componer el repositorio cuando la base responde o, si no estaba disponible, en la primera operación de negocio.
 - **Base que vuelve tras una caída**: la primera consulta de salud posterior informa 200 sin reiniciar el proceso y sin reiniciar el contenedor.
-- **Configuración de motor no admitida**: el proceso no arranca, informa un error de configuración comprensible y no abre conexión ni cae a almacenamiento en memoria; en la consola `health` el error es un `application/problem+json` con `CONFIG_DATABASE_URL_INVALIDA` y salida 2, nunca una traza.
+- **Configuración de motor no admitida**: el proceso no arranca, informa un error de configuración comprensible y no abre conexión ni cae a almacenamiento en memoria; el comportamiento exacto de la consola y de la API se define en FR-018.
 - **Alias de DSN no admitido**: `postgres://…` se rechaza como configuración inválida, igual que cualquier otro esquema distinto de `sqlite://` y `postgresql://`.
 - **DSN con credenciales embebidas**: las credenciales entran por entorno y nunca aparecen en documentos de salud, logs, mensajes de error ni en la imagen.
 - **DSN definido pero vacío**: se rechaza como configuración inválida y no cae a almacenamiento en memoria; sólo la ausencia total de la variable habilita la ruta local.
@@ -92,14 +92,14 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 - **FR-001**: El servicio DEBE exponer `GET /health` y ejecutar una comprobación real de conectividad con la base configurada en cada petición; cuando la base responde, DEBE responder 200 OK con exactamente `{"status": "ok", "database": "connected"}`.
 - **FR-002**: Cuando la comprobación falla, `GET /health` DEBE responder 503 Service Unavailable con exactamente `{"status": "error", "database": "unavailable"}`; NUNCA 500, traza, credenciales ni detalles del motor.
-- **FR-003**: La consola DEBE ofrecer el comando `health`, que escribe en la salida estándar el mismo documento que `GET /health` y termina con código de salida 0 si está conectado o 1 si no lo está, sin depender del adaptador HTTP.
+- **FR-003**: La consola DEBE ofrecer el comando `health`, que escribe en la salida estándar el mismo documento que `GET /health` y termina con código de salida 0 si está conectado o 1 si no lo está, sin depender del adaptador HTTP. Un fallo interno inesperado del propio comando (distinto de la conectividad) DEBE escribirse como `application/problem+json` en stderr con el código estable `HEALTH_ERROR_INTERNO` y salida 1, sin traza ni detalles internos.
 - **FR-004**: La comprobación de salud DEBE exponerse como caso de uso en la capa de aplicación y delegar en el puerto de repositorio; el servicio NO DEBE contener SQL, códigos HTTP ni detalles de motor.
-- **FR-005**: El puerto de repositorio DEBE mantener `check_health() -> bool`, sin lanzar excepciones: sólo devuelve `True` si una consulta trivial obtiene fila, y `False` ante cualquier fallo de conectividad, autenticación o tiempo de espera.
+- **FR-005**: El puerto de repositorio DEBE mantener `check_health() -> bool`, sin lanzar excepciones: sólo devuelve `True` si una consulta trivial `SELECT 1` obtiene fila, y `False` ante cualquier fallo de conectividad, autenticación o tiempo de espera.
 - **FR-006**: La fábrica de salida DEBE seleccionar el repositorio exclusivamente por `DATABASE_URL`: variable ausente o `sqlite:///:memory:` → SQLite en memoria; `sqlite:///ruta` → SQLite en archivo; `postgresql://…` → PostgreSQL; variable definida vacía o compuesta sólo por espacios → `ConfigurationError` antes de abrir conexión, igual que cualquier otro esquema no admitido, sin fallback silencioso.
 - **FR-007**: Ningún adaptador de entrada DEBE leer `DATABASE_URL` ni instanciar un repositorio concreto; la fábrica es el único punto que interpreta el DSN.
 - **FR-008**: El adaptador PostgreSQL DEBE implementar el puerto completo con semántica equivalente a SQLite: `INSERT` estricto, conflicto de identificador traducido al mismo error de aplicación, columnas explícitas, filtro de activos y sin cálculo de SLA, similitud, claves de grupo ni ordenación.
 - **FR-009**: El esquema PostgreSQL DEBE crearse de forma idempotente con las mismas tablas, columnas e índices compuestos; `created_at` y `resolved_at` DEBEN persistirse como texto naive ISO 8601 con microsegundos y NUNCA como `TIMESTAMP`, `TIMESTAMPTZ`, época numérica ni `now()` del motor.
-- **FR-010**: Un fallo de conectividad al arrancar NUNCA DEBE impedir que el servicio se levante y reporte 503; la recuperación de la base DEBE devolver 200 sin reiniciar la API.
+- **FR-010**: Un fallo de conectividad al arrancar NUNCA DEBE impedir que el servicio se levante y reporte 503; la recuperación posterior se define en RNF-005 (200 en ≤ 5 s sin reiniciar la API).
 - **FR-011**: La inicialización del esquema DEBE ser idempotente y reintentarse tras una caída; ninguna operación de negocio DEBE ejecutarse contra un esquema no inicializado.
 - **FR-012**: Las capacidades de triaje, resumen, alta y SLA DEBEN conservar exactamente su comportamiento, contratos y códigos de error con ambos motores; la paridad se demuestra con la misma suite de contrato.
 - **FR-013**: La imagen de la API DEBE construirse desde el repositorio y `uv.lock` con `uv`, ejecutarse como usuario sin privilegios, servir con Uvicorn sobre FastAPI y no contener credenciales, DSN ni estado persistente.
@@ -113,7 +113,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 - **RNF-001 (aislamiento de pruebas)**: los escenarios BDD DEBEN usar dobles en memoria y ejecutarse sin Docker, sin red y sin base real; la integración PostgreSQL DEBE vivir en una suite separada.
 - **RNF-002 (latencia)**: con la base sana, el p95 de `/health` DEBE ser ≤ 200 ms en local; con la base caída, la respuesta 503 DEBE llegar en ≤ 3 s, con un tiempo de espera de comprobación ≤ 2 s.
-- **RNF-003 (arranque reproducible)**: desde un clon limpio, `docker compose up --build` DEBE dejar ambos servicios sanos en ≤ 60 s la primera vez y ≤ 20 s en arranques posteriores, en un host de desarrollo estándar.
+- **RNF-003 (arranque reproducible)**: desde un clon limpio y con las imágenes base ya descargadas, `docker compose up --build` DEBE dejar ambos servicios sanos en ≤ 60 s la primera vez y ≤ 20 s en arranques posteriores, medidos en el runner de CI de referencia (4 vCPU, 8 GB RAM, SSD y red local). La descarga inicial de imágenes se mide aparte y no cuenta para el umbral.
 - **RNF-004 (persistencia)**: los datos DEBEN sobrevivir a `docker compose restart`, a `docker compose up --force-recreate api` y a `docker compose down` sin `-v`; sólo la eliminación explícita del volumen los pierde.
 - **RNF-005 (recuperación)**: tras volver la base, `/health` DEBE reportar 200 en ≤ 5 s sin reiniciar la API, y el contenedor `api` DEBE volver a `healthy` sin intervención manual.
 - **RNF-006 (paridad de motores)**: la misma suite de contrato DEBE pasar en SQLite y PostgreSQL con cero divergencias de valores, errores y orden; el benchmark de 10 000 incidentes DEBE conservar los objetivos de SC-006 de H003.
@@ -121,7 +121,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **RNF-008 (seguridad)**: ni la imagen ni el repositorio DEBEN contener credenciales o DSN reales; `/health` no DEBE exponer motor, host, usuario ni mensajes del driver; la base no DEBE ser alcanzable desde el host por defecto.
 - **RNF-009 (fronteras hexagonales)**: `uv run ruff check src/` DEBE pasar; `psycopg` sólo puede importarse desde `src/adapters/outbound/`; `DATABASE_URL` sólo puede leerse en la fábrica; dominio y aplicación no cambian de dependencias.
 - **RNF-010 (compatibilidad)**: el desarrollo local con Python ≥ 3.10 DEBE seguir funcionando; la única dependencia nueva es `psycopg[binary]`, sin ORM ni herramienta de migraciones.
-- **RNF-011 (portabilidad)**: el despliegue DEBE funcionar con una sola orden en Windows, macOS y Linux con Docker, sin rutas absolutas del host ni pasos manuales específicos.
+- **RNF-011 (portabilidad)**: el despliegue DEBE funcionar con una sola orden en Windows 11, macOS 14 y Ubuntu 22.04 con Docker Compose v2, sin rutas absolutas del host ni pasos manuales específicos. La verificación automatizada cubre Ubuntu en CI; Windows y macOS se validan con `quickstart.md` antes de cerrar el hito.
 - **RNF-012 (observabilidad mínima)**: los logs no DEBEN incluir el DSN ni credenciales; el documento de salud DEBE ser estable y consumible por scripts y por el healthcheck del contenedor.
 - **RNF-013 (CI)**: `uv run pytest` DEBE pasar sin Docker; la verificación de integración con PostgreSQL y `uv run ruff check src/` DEBEN ejecutarse en el pipeline cuando haya motor disponible.
 
@@ -140,6 +140,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - La consola no imprime traza ni mensaje adicional; el documento es el resultado.
 - Sólo `/health` traduce una caída de la base a 503; triaje, resumen, alta y SLA conservan sus códigos y su manejo de error inesperado (FR-012).
 - Una configuración de motor inválida no produce documento de salud: la consola escribe `CONFIG_DATABASE_URL_INVALIDA` en stderr con salida 2 y la API no arranca (FR-018).
+- Un fallo interno inesperado del comando `health` (no de conectividad) produce `application/problem+json` en stderr con `HEALTH_ERROR_INTERNO` y salida 1 (FR-003).
 
 ### Entidades Clave
 
@@ -155,7 +156,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 ### Resultados Medibles
 
 - **SC-001**: El 100 % de las consultas de salud informa `connected` si y sólo si la base responde a una consulta trivial en ese instante, sin caché ni valores obsoletos.
-- **SC-002**: El 100 % de las comprobaciones con la base caída responde 503 y nunca 500, dentro del tiempo límite.
+- **SC-002**: El 100 % de las comprobaciones con la base caída responde 503 y nunca 500 en ≤ 3 s, con una comprobación de conectividad acotada a ≤ 2 s.
 - **SC-003**: HTTP y consola coinciden en el 100 % de los campos y valores del documento de salud, en ambos estados.
 - **SC-004**: Desde un clon limpio, una sola orden deja el despliegue de referencia sano, con la API esperando a la base y sin arranques degradados silenciosos.
 - **SC-005**: El 100 % de los datos sobrevive a recrear o reiniciar la API y a reiniciar la base; sólo se pierden al eliminar el volumen de forma explícita.
