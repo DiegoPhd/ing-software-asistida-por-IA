@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://incidentops.local/contratos/h002/summary.schema.json",
+  "title": "Resumen de incidentes activos",
+  "description": "Documento canónico compartido por GET /api/v1/incidents/summary y el subcomando summary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["total_active", "breached_count", "incidents"],
+  "properties": {
+    "total_active": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Incidentes activos incluidos en la respuesta (después del filtro)."
+    },
+    "breached_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cuántos de los incidentes incluidos superaron estrictamente su máximo permitido."
+    },
+    "incidents": {
+      "type": "array",
+      "description": "Detalle ordenado por severidad P0→P3, minutos transcurridos descendentes e identificador ascendente.",
+      "items": {
+        "$ref": "#/$defs/activeIncident"
+      }
+    }
+  },
+  "$defs": {
+    "activeIncident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "incident_id",
+        "title",
+        "component",
+        "severity",
+        "status",
+        "elapsed_minutes",
+        "is_breached",
+        "requires_escalation"
+      ],
+      "properties": {
+        "incident_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "component": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["P0", "P1", "P2", "P3"] },
+        "status": { "enum": ["OPEN", "IN_PROGRESS"] },
+        "elapsed_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minutos de SLA truncados: 24x7 para P0/P1 y ventana hábil para P2/P3."
+        },
+        "is_breached": {
+          "type": "boolean",
+          "description": "Verdadero solo si elapsed_minutes supera estrictamente el máximo permitido."
+        },
+        "requires_escalation": {
+          "type": "boolean",
+          "description": "Verdadero si está activo, no incumplió y alcanzó al menos el 75 % del máximo permitido."
+        }
+      }
+    }
+  }
+}
