@@ -1,0 +1,12 @@
+# El adaptador HTTP es dueño de su propio paquete: puede importar sus módulos
+# internos (errors, schemas), pero sigue sin acceso al legado ni al repositorio
+# concreto. La prohibición `src.adapters.inbound.api` vive en el nivel superior
+# de `inbound/` y aplica al CLI, que no debe depender del canal HTTP.
+extend = "../../../../pyproject.toml"
+
+[lint.flake8-tidy-imports.banned-api]
+"src.adapters.outbound.sqlite_repository" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
+"src.composition" = { msg = "El legado src/composition.py se retiró; usa src.adapters.outbound.factory." }
+"src.models" = { msg = "El legado src/models.py se retiró; usa src.domain.models." }
+"src.sla_calculator" = { msg = "El legado src/sla_calculator.py se retiró; usa src.domain.sla_calculator." }
+"src.incident_repository" = { msg = "El legado src/incident_repository.py se retiró; usa el puerto de aplicación." }

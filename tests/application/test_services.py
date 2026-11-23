@@ -1,5 +1,7 @@
 """Pruebas del caso de uso de triaje."""
 
+from typing import Optional, Sequence
+
 import pytest
 
 from src.application.services import (
@@ -10,11 +12,33 @@ from src.application.services import (
     IncidentService,
     ValidationError,
 )
+from src.domain.models import Incident
+
+
+class _RepositorioVacio:
+    """Doble del puerto para las pruebas que solo ejercitan el triaje."""
+
+    def save_incident(self, incident: Incident) -> None:
+        return None
+
+    def get_incident(self, incident_id: str) -> Optional[Incident]:
+        return None
+
+    def find_open_duplicates(self, incident: Incident) -> Sequence[Incident]:
+        return []
+
+    def list_active_incidents(
+        self, component_filter: Optional[str]
+    ) -> Sequence[Incident]:
+        return []
+
+    def check_health(self) -> bool:
+        return True
 
 
 @pytest.fixture()
 def servicio() -> IncidentService:
-    return IncidentService()
+    return IncidentService(_RepositorioVacio())
 
 
 def test_triaje_valido_delega_en_el_dominio(servicio: IncidentService) -> None:

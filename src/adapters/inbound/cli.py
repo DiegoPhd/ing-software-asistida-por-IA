@@ -13,8 +13,16 @@ from typing import Optional, Tuple
 import typer
 
 from src.adapters.inbound.problem import build_problem
-from src.application.services import ValidationError
-from src.composition import build_incident_service
+from src.adapters.inbound.summary_contract import (
+    parse_reference_time,
+    to_summary_response,
+)
+from src.adapters.outbound.factory import build_incident_service
+from src.application.services import (
+    SUMMARY_ERROR_INTERNO,
+    DataInconsistencyError,
+    ValidationError,
+)
 
 TRIAGE_FUENTE_TEXTO_INVALIDA = "TRIAGE_FUENTE_TEXTO_INVALIDA"
 TRIAGE_ARCHIVO_INVALIDO = "TRIAGE_ARCHIVO_INVALIDO"
@@ -45,9 +53,11 @@ class _EntradaInvalida(Exception):
         self.detail = detail
 
 
-def _emitir_error(code: str, field: str, detail: str) -> None:
+def _emitir_error(code: str, field: str, detail: str, status: int = 422) -> None:
     typer.echo(
-        json.dumps(build_problem(code, field, detail, status=422), ensure_ascii=False, indent=2),
+        json.dumps(
+            build_problem(code, field, detail, status=status), ensure_ascii=False, indent=2
+        ),
         err=True,
     )
 
@@ -165,6 +175,45 @@ def triage(
         raise typer.Exit(1)
 
     typer.echo(json.dumps(asdict(resultado), ensure_ascii=False, indent=2))
+
+
+@app.command("summary")
+def summary(
+    component: Optional[str] = typer.Option(
+        None,
+        "--component",
+        help="Filtra por componente exacto; ausente o vacío significa todos.",
+    ),
+    reference_time: Optional[str] = typer.Option(
+        None,
+        "--reference-time",
+        help="Instante ISO 8601 naive: YYYY-MM-DDTHH:MM:SS[.ffffff].",
+    ),
+) -> None:
+    """Escribe en stdout el resumen de incidentes activos en JSON."""
+    try:
+        instante = parse_reference_time(reference_time)
+        resumen = build_incident_service().get_active_incidents_summary(
+            reference_time=instante,
+            component_filter=component,
+        )
+    except ValidationError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail)
+        raise typer.Exit(2)
+    except DataInconsistencyError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail, status=409)
+        raise typer.Exit(1)
+    except Exception:
+        _emitir_error(
+            SUMMARY_ERROR_INTERNO,
+            "summary",
+            "No fue posible construir el resumen.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    documento = to_summary_response(resumen).model_dump()
+    typer.echo(json.dumps(documento, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

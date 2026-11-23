@@ -1,0 +1,16 @@
+# Fronteras del dominio (Constitución §VI): núcleo puro, sin frameworks ni E/S.
+# TID252 (imports relativos) queda activo por la selección `TID` de la raíz.
+extend = "../../pyproject.toml"
+
+[lint.flake8-tidy-imports.banned-api]
+"src.application" = { msg = "El dominio no puede depender de la capa de aplicación." }
+"src.adapters" = { msg = "El dominio no puede depender de los adaptadores." }
+"src.composition" = { msg = "El dominio no puede depender de la raíz de composición." }
+"src.models" = { msg = "El legado src/models.py se retiró; usa src.domain.models." }
+"src.sla_calculator" = { msg = "El legado src/sla_calculator.py se retiró; usa src.domain.sla_calculator." }
+"src.incident_repository" = { msg = "El legado src/incident_repository.py se retiró; usa el puerto de aplicación." }
+"fastapi" = { msg = "El dominio no puede depender de FastAPI." }
+"typer" = { msg = "El dominio no puede depender de Typer." }
+"pydantic" = { msg = "El dominio no puede depender de Pydantic." }
+"os" = { msg = "El dominio no puede leer el entorno ni el sistema operativo." }
+"sqlite3" = { msg = "El dominio no puede depender de SQLite." }
