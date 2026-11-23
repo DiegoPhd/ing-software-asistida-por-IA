@@ -11,14 +11,13 @@ uv run python -m src.adapters.inbound.cli sla [opciones]
 
 | Opción | Tipo | Obligatorio | Regla |
 |---|---|---|---|
-| `--incident-id` | texto | Sí, salvo que venga en `--file` | Único; recortado; no vacío; máximo 64 caracteres |
-| `--raw-text` | texto | Sí (`--raw-text`, `--raw-text -` o `--file`) | Texto original; `-` lo lee de la entrada estándar; máximo 10 000 caracteres |
-| `--file` | ruta | Alternativa a `--raw-text` | JSON con un único objeto `{incident_id?, raw_text, title?, created_at?}` |
+| `--incident-id` | texto | Sí | Único; recortado; no vacío; máximo 64 caracteres |
+| `--raw-text` | texto | Sí | Texto original; máximo 10 000 caracteres |
 | `--title` | texto | No | Si se omite, se deriva del texto; máximo 200 caracteres |
 | `--created-at` | ISO 8601 naive | No | `YYYY-MM-DDTHH:MM:SS[.ffffff]`, separador `T`, sin zona horaria; si se omite, el instante de la solicitud |
 
-`--raw-text` y `--file` son mutuamente excluyentes. Si el archivo trae `incident_id` y también se
-indica `--incident-id`, deben coincidir; un desacuerdo es `CREATE_SOLICITUD_INVALIDA` con salida `2`.
+`--raw-text` es la única fuente del reporte: leer el texto de un archivo o de la entrada estándar
+queda fuera del alcance de H003.
 
 **Salida estándar**: el documento JSON de
 [incident-created.schema.json](./incident-created.schema.json), idéntico al del canal HTTP para la
@@ -35,7 +34,7 @@ uv run python -m src.adapters.inbound.cli create \
 
 | Opción | Tipo | Obligatorio | Regla |
 |---|---|---|---|
-| `--incident-id` | texto | Sí | Identificador del incidente almacenado |
+| `--incident-id` | texto | Sí | Identificador del incidente almacenado; vacío o sólo espacios es `SLA_ID_VACIO` con salida `2` |
 | `--reference-time` | ISO 8601 naive | No | Instante único de evaluación; si se omite, el instante actual |
 
 **Salida estándar**: el documento JSON de
@@ -51,7 +50,7 @@ uv run python -m src.adapters.inbound.cli sla --incident-id INC-3001 --reference
 | Código | Situación | Canal |
 |---|---|---|
 | 0 | Operación exitosa, incluido el alta con aviso de duplicados | `stdout` con JSON |
-| 2 | Entrada inválida: campo vacío, longitud excedida, fecha mal formada o con zona, campo desconocido | `stderr` con problem+json; `stdout` vacío |
+| 2 | Entrada inválida: campo vacío, longitud excedida, fecha mal formada o con zona, campo desconocido, identificador vacío en `sla` | `stderr` con problem+json; `stdout` vacío |
 | 1 | Identificador ya existente, incidente inexistente, incoherencia temporal o de datos, fallo inesperado | `stderr` con problem+json o mensaje; sin documento parcial |
 
 **Códigos de error**: los mismos del contrato HTTP (`CREATE_*`, `SLA_*`). La correspondencia es:

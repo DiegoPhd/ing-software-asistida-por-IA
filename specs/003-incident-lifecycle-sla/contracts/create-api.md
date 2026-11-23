@@ -21,6 +21,9 @@
 
 **Respuesta 201**: documento de [incident-created.schema.json](./incident-created.schema.json).
 
+Se rechaza con `422 CREATE_SOLICITUD_INVALIDA` cualquier parámetro de consulta desconocido o repetido,
+igual que un campo desconocido en el cuerpo.
+
 ```json
 {
   "incident_id": "INC-3002",

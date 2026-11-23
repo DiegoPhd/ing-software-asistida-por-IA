@@ -52,9 +52,10 @@ creación, original más antiguo, SLA de un terminal y concurrencia) se toman co
 
 ## D3 · Evaluación de SLA con contexto
 
-- **Decisión**: añadir a `src/domain/models.py` `SLAComputationWindow = Literal["24x7",
+- **Decisión**: añadir a `src/domain/models.py` el alias `SLAComputationWindow = Literal["24x7",
   "BUSINESS_HOURS"]` y
-  `SLAEvaluationDetail(incident, evaluation, reference_time, window)`, ambos `frozen=True`. Añadir
+  `SLAEvaluationDetail(incident, evaluation, reference_time, window)` como `dataclass(frozen=True)`
+  (el alias `Literal` no es un dataclass). Añadir
   `evaluate_sla_detail(incident, reference_time) -> SLAEvaluationDetail` en `sla_calculator.py`, que
   usa `resolver_ventana_temporal`, llama a `evaluate_sla_status` y adjunta la ventana.
 - **Razón**: FR-018 pide `incident_id`, `severity`, `status`, `created_at`, `resolved_at`,
@@ -138,8 +139,8 @@ creación, original más antiguo, SLA de un terminal y concurrencia) se toman co
 - **Decisión**: `IncidentService` mantiene un registro de `threading.Lock` por componente, protegido
   por un cerrojo de guarda, y ejecuta bajo él la secuencia `find_open_duplicates → assess_duplicates
   → save_incident`. El cerrojo es de proceso y no se comparte entre réplicas. `create_incident`
-  acepta un `now: Optional[Callable[[], datetime]]` en el constructor del servicio para inyectar el
-  reloj en pruebas.
+  resuelve el instante con un `ClockPort` (con `datetime.now()` como respaldo cuando no se inyecta,
+  para no romper H002) y `factory.py` inyecta `SystemClock` en producción y en los adaptadores.
 - **Razón**: FR-030 pide que dos altas equivalentes del mismo componente se serialicen y que la
   segunda vea a la primera; el supuesto de la spec limita la garantía a un almacenamiento único, sin
   bloqueo distribuido. La aplicación puede secuenciar y transaccionar (Principio IV) y el cerrojo no
@@ -180,9 +181,9 @@ creación, original más antiguo, SLA de un terminal y concurrencia) se toman co
   `parse_instante_naive(valor, campo, codigo)`; `summary_contract.parse_reference_time` delega en él
   con `SUMMARY_REFERENCIA_INVALIDA` sin cambiar su comportamiento.
   `src/adapters/inbound/lifecycle_contract.py` define `CreateIncidentRequest`,
-  `IncidentCreatedResponse`, `SLAEvaluationResponse`, los mapeos desde el dominio y un
-  `derivar_titulo(raw_text)` determinista. HTTP los usa como `response_model`; la CLI los serializa
-  con `model_dump(mode="json")`.
+  `IncidentCreatedResponse`, `SLAEvaluationResponse` y los mapeos desde el dominio; el título por
+  defecto lo aporta `derivar_titulo` de `src/domain/models.py` (Principio I). HTTP los usa como
+  `response_model`; la CLI los serializa con `model_dump(mode="json")`.
 - **Razón**: la paridad exige nombres y tipos en un solo lugar y el CLI no puede importar `api/`.
   `model_dump(mode="json")` produce la misma cadena ISO que Pydantic en HTTP; con `json.dumps` sobre
   `model_dump()` las fechas no son serializables y con `asdict` los nombres podrían divergir.
@@ -194,7 +195,8 @@ creación, original más antiguo, SLA de un terminal y concurrencia) se toman co
   convierte en `RequestValidationError` y el manejador los publica como `422` con código
   `CREATE_SOLICITUD_INVALIDA` o `SLA_SOLICITUD_INVALIDA`.
 - **Título derivado**: primera línea del texto recortada, hasta 200 caracteres; si queda vacía se usa
-  el texto recortado. Determinista y estable, sin reloj ni aleatoriedad.
+  el texto recortado. La regla vive en `src/domain/models.py` (`derivar_titulo`, `MAX_TITULO`), es
+  determinista y estable, sin reloj ni aleatoriedad, y los dos canales la comparten.
 - **Validación de `created_at` y `reference_time`**: el parser del borde rechaza espacio en lugar de
   `T`, zona horaria, formatos distintos y tipos no textuales; el dominio vuelve a comprobar naive
   porque es la última frontera antes de la aritmética.
@@ -247,3 +249,17 @@ creación, original más antiguo, SLA de un terminal y concurrencia) se toman co
   ventana exacta y un segundo por encima, grupo heredado, candidato sin texto y posterior), SLA
   (aware rechazado, referencia anterior a creación, terminal congelado y coherencia de `resolved_at`)
   y adaptador (columnas nuevas, índice, conflicto de alta y candidatos estructurales).
+
+## D12 · Reloj inyectable como puerto
+
+- **Decisión**: declarar `ClockPort` con `now() -> datetime` en `src/application/ports.py`, implementarlo
+  con `SystemClock` en `src/adapters/outbound/system_clock.py` e inyectarlo desde `factory.py`. El
+  constructor del servicio recibe `clock: Optional[ClockPort] = None`; sin reloj conserva el
+  `datetime.now()` de H002 para no romper la composición ni las pruebas existentes.
+- **Razón**: el Principio IV prevé incorporar `ClockPort` cuando un caso de uso lo requiera y H003 es
+  ese hito (alta con `created_at` opcional y SLA con `reference_time` opcional). El dominio sigue sin
+  reloj: recibe el instante como argumento explícito (Principio II).
+- **Alternativas consideradas**: (a) `now: Callable[[], datetime]` como parámetro suelto: funciona,
+  pero deja sin cubrir la previsión explícita del Principio IV y no da un punto único de sustitución;
+  (b) `datetime.now()` dentro del servicio: reloj implícito e imposible de fijar sin `monkeypatch`;
+  (c) reloj en el dominio: prohibido por el Principio II.

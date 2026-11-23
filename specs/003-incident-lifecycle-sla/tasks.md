@@ -51,14 +51,14 @@ necesitan las cuatro historias. Ninguna historia puede cerrarse sin esta fase.
 
 **⚠️ CRÍTICO**: completar T003–T010 antes de empezar cualquier historia de usuario.
 
-- [ ] T003 [P] Extender `src/domain/models.py`: añadir `Incident.recommended_team: Optional[Team] = None` e `Incident.duplicate_group_key: Optional[str] = None` al final del `dataclass`, y declarar `SLAComputationWindow` y `SLAEvaluationDetail` como `frozen=True`, exportándolos en `__all__`. Citas: `data-model.md` → `Incident.recommended_team`, `Incident.duplicate_group_key`, `SLAComputationWindow`, `SLAEvaluationDetail.incident`, `SLAEvaluationDetail.evaluation`, `SLAEvaluationDetail.reference_time`, `SLAEvaluationDetail.window`.
+- [ ] T003 Extender `src/domain/models.py`: añadir `Incident.recommended_team: Optional[Team] = None` e `Incident.duplicate_group_key: Optional[str] = None` al final del `dataclass`; declarar el alias `SLAComputationWindow = Literal["24x7", "BUSINESS_HOURS"]`, `SLAEvaluationDetail` como `dataclass(frozen=True)` y la función pura `derivar_titulo(raw_text)` con `MAX_TITULO = 200`, exportándolos en `__all__`. Citas: `data-model.md` → `Incident.title`, `Incident.recommended_team`, `Incident.duplicate_group_key`, `SLAComputationWindow`, `SLAEvaluationDetail.incident`, `SLAEvaluationDetail.evaluation`, `SLAEvaluationDetail.reference_time`, `SLAEvaluationDetail.window`.
 - [ ] T004 [P] Centralizar la normalización temporal y la evaluación con contexto en `src/domain/sla_calculator.py`: `validar_instante_naive(instante, campo)`, `resolver_ventana_temporal(incident, reference_time)` y `evaluate_sla_detail(incident, reference_time) -> SLAEvaluationDetail`, conservando intactas la firma y la aritmética de `evaluate_sla_status`. Citas: `data-model.md` → `Incident.created_at`, `Incident.resolved_at`, `Incident.status`, `SLAEvaluationDetail.window`, `SLAEvaluationDetail.reference_time`.
 - [ ] T005 [P] Añadir las reglas de equivalencia en `src/domain/triage_rules.py`: `DUPLICATE_SIMILARITY_THRESHOLD = 0.75`, `DUPLICATE_WINDOW_DAYS` (P0 1, P1 2, P2 3, P3 4), `DuplicateAssessment` con la propiedad `is_duplicate`, `is_equivalent(older, newer)` y `assess_duplicates(new_incident, candidates)` según el algoritmo del modelo de datos. Citas: `data-model.md` → `DuplicateAssessment.duplicate_group_key`, `DuplicateAssessment.duplicate_of`, `DuplicateAssessment.is_duplicate`, `Incident.raw_text`.
-- [ ] T006 [P] Ampliar `src/application/services.py`: `DataInconsistencyError` con `status: int = 409`, `IncidentAlreadyExistsError`, `IncidentNotFoundError`, `IncidentCreationResult`, las constantes de código `CREATE_*` y `SLA_*`, y un parámetro opcional `now: Optional[Callable[[], datetime]]` en `IncidentService.__init__` con `datetime.now` por defecto. Citas: `data-model.md` → `IncidentCreationResult.incident`, `IncidentCreationResult.duplicate`.
-- [ ] T007 [P] Ampliar el esquema y el mapeo en `src/adapters/outbound/sqlite_repository.py`: columnas `recommended_team TEXT` y `duplicate_group_key TEXT`, migración idempotente con `PRAGMA table_info` + `ALTER TABLE`, índice `idx_incidents_dup_key (duplicate_group_key, status)`, escritura con `INSERT` estricto que traduce `sqlite3.IntegrityError` a `IncidentAlreadyExistsError`, y siembra sintética con sentencia propia e idempotente. Citas: `data-model.md` → `Incident.recommended_team`, `Incident.duplicate_group_key`.
+- [ ] T006 [P] Ampliar `src/application/ports.py` con `ClockPort` (`now() -> datetime`) y `src/application/services.py` con `DataInconsistencyError` (`status: int = 409`), `IncidentAlreadyExistsError`, `IncidentNotFoundError`, `IncidentCreationResult`, las constantes de código `CREATE_*` y `SLA_*`, y un parámetro opcional `clock: Optional[ClockPort] = None` en `IncidentService.__init__` que conserve `datetime.now()` como respaldo heredado de H002; crear `src/adapters/outbound/system_clock.py` con `SystemClock` e inyectarlo desde `src/adapters/outbound/factory.py`. Citas: `data-model.md` → `IncidentCreationResult.incident`, `IncidentCreationResult.duplicate`.
+- [ ] T007 [P] Ampliar el esquema y el mapeo en `src/adapters/outbound/sqlite_repository.py`: columnas `recommended_team TEXT` y `duplicate_group_key TEXT`, migración idempotente con `PRAGMA table_info` + `ALTER TABLE`, índice `idx_incidents_dup_key (duplicate_group_key, status)`, escritura con `INSERT` estricto que traduce `sqlite3.IntegrityError` a `IncidentAlreadyExistsError`, y siembra sintética con sentencia propia e idempotente; actualizar el docstring de `save_incident` en `src/application/ports.py` para fijar que inserta y rechaza el conflicto (nunca reemplaza). Citas: `data-model.md` → `Incident.recommended_team`, `Incident.duplicate_group_key`.
 - [ ] T008 [P] Crear `src/adapters/inbound/temporal_contract.py` con `PATRON_INSTANTE` y `parse_instante_naive(valor, campo, codigo)`, y hacer que `parse_reference_time` de `src/adapters/inbound/summary_contract.py` delegue en él conservando `SUMMARY_REFERENCIA_INVALIDA` y su comportamiento actual.
-- [ ] T009 [P] Crear `src/adapters/inbound/lifecycle_contract.py` con `CreateIncidentRequest`, `IncidentCreatedResponse`, `SLAEvaluationResponse` (todos con `extra="forbid"`), `derivar_titulo(raw_text)` determinista, y las funciones de mapeo desde el dominio. Citas: `data-model.md` → `Incident.incident_id`, `Incident.title`, `DuplicateAssessment.duplicate_of`, `DuplicateAssessment.is_duplicate`.
-- [ ] T010 [P] Elegir el prefijo de error por ruta en `src/adapters/inbound/api/errors.py` (`/incidents/triage` → `TRIAGE`, `/summary` → `SUMMARY`, `/incidents` → `CREATE`, `/incidents/{id}/sla` → `SLA`, evaluando `/summary` antes del patrón con identificador), añadir los títulos de `CREATE_*` y `SLA_*` en `src/adapters/inbound/problem.py`, hacer que el manejador de `DataInconsistencyError` use `exc.status`, y registrar en `src/adapters/inbound/api/app.py` los manejadores de `IncidentNotFoundError` (404) e `IncidentAlreadyExistsError` (409).
+- [ ] T009 [P] Crear `src/adapters/inbound/lifecycle_contract.py` con `CreateIncidentRequest`, `IncidentCreatedResponse`, `SLAEvaluationResponse` (todos con `extra="forbid"`) y las funciones de mapeo desde el dominio; el título por defecto se obtiene de `src.domain.models.derivar_titulo`, sin duplicar la regla en el contrato. Citas: `data-model.md` → `Incident.incident_id`, `Incident.title`, `DuplicateAssessment.duplicate_of`, `DuplicateAssessment.is_duplicate`.
+- [ ] T010 [P] Elegir el prefijo de error por ruta en `src/adapters/inbound/api/errors.py` (`/incidents/triage` → `TRIAGE`, `/summary` → `SUMMARY`, `/incidents` → `CREATE`, `/incidents/{id}/sla` → `SLA`, evaluando `/summary` antes del patrón con identificador), hacer que el manejador de `DataInconsistencyError` use `exc.status` y registrar en `src/adapters/inbound/api/app.py` los manejadores de `IncidentNotFoundError` e `IncidentAlreadyExistsError`; los códigos concretos de cada ruta los fijan T017 y T030.
 
 **Punto de control**: dominio, puerto, persistencia y contrato de transporte listos; las historias pueden
 comenzar.
@@ -72,22 +72,24 @@ estado `OPEN` y recuperarlo tras reiniciar el proceso, rechazando conflictos de 
 entradas inválidas sin persistir nada.
 
 **Prueba independiente**: registrar un reporte válido por cualquiera de los dos canales, reiniciar el
-proceso sobre el mismo archivo SQLite y verificar que `get_incident`, el resumen de activos y `sla`
-devuelven el mismo identificador, título, componente, severidad, estado y texto original; repetir el
-identificador produce `409`/salida `1` y una entrada vacía produce `422`/salida `2`.
+proceso sobre el mismo archivo SQLite y verificar que `get_incident` devuelve el mismo identificador,
+título, componente, severidad, estado y texto original, y que el resumen de activos coincide en
+identificador, título, componente, severidad y estado; el canal `sla` sólo se comprueba por los campos
+de su propio documento (FR-018). Repetir el identificador produce `409`/salida `1` y una entrada vacía
+produce `422`/salida `2`.
 
 ### Pruebas de la Historia 1 (escribir primero, deben fallar)
 
-- [ ] T011 [P] [US1] Escribir los escenarios BDD del alta persistente en `tests/test_spec_003_lifecycle_sla.py`: `201` con clasificación y `OPEN`, recuperación tras recrear el repositorio sobre el mismo archivo, aparición en `summary`, `409 CREATE_ID_CONFLICTO` sin sobrescritura y `422`/salida `2` para identificador o texto vacíos, sólo espacios o demasiado largos.
-- [ ] T012 [P] [US1] Añadir pruebas del caso de uso de alta en `tests/application/test_services.py` con un doble de `IncidentRepositoryPort`: resolución única de `now`, título derivado, propagación de conflicto y códigos `CREATE_*` de validación.
+- [ ] T011 [P] [US1] Escribir los escenarios BDD del alta persistente en `tests/test_spec_003_lifecycle_sla.py`: `201` con clasificación y `OPEN`, título derivado de la primera línea con máximo 200 caracteres cuando se omite, recuperación tras recrear el repositorio sobre el mismo archivo, aparición en `summary` con identificador, título, componente, severidad y estado, `409 CREATE_ID_CONFLICTO` sin sobrescritura, `422`/salida `2` para identificador o texto vacíos, sólo espacios o demasiado largos, y `422 CREATE_CREACION_INVALIDA`/salida `2` para `created_at` malformado, con espacio o con zona horaria.
+- [ ] T012 [P] [US1] Añadir pruebas del caso de uso de alta en `tests/application/test_services.py` con un doble de `IncidentRepositoryPort` y de `ClockPort`: una sola lectura del reloj, título derivado por `derivar_titulo`, texto persistido sin normalizar, propagación de conflicto y códigos `CREATE_*` de validación.
 - [ ] T013 [P] [US1] Añadir pruebas del adaptador en `tests/adapters/test_sqlite_repository.py`: ida y vuelta de `recommended_team` y `duplicate_group_key`, migración de una base sin las columnas nuevas, conflicto de `save_incident` sin sobrescritura y siembra idempotente.
 
 ### Implementación de la Historia 1
 
-- [ ] T014 [US1] Implementar `IncidentService.create_incident` en `src/application/services.py`: validar y recortar identificador y texto, derivar u validar el título, resolver `now` una sola vez si falta `created_at`, clasificar con `classify_impact`, construir el `Incident` en `OPEN` con `duplicate_group_key=None`, persistir y devolver `IncidentCreationResult` con `DuplicateAssessment(None, ())`; traducir el conflicto del puerto a `IncidentAlreadyExistsError`. Citas: `data-model.md` → `Incident.incident_id`, `Incident.title`, `Incident.component`, `Incident.severity`, `Incident.status`, `Incident.created_at`, `Incident.raw_text`.
-- [ ] T015 [P] [US1] Registrar `POST /api/v1/incidents` en `src/adapters/inbound/api/app.py` con `CreateIncidentRequest`/`IncidentCreatedResponse` como modelos y `status_code=201`, sin lógica de negocio en la ruta.
-- [ ] T016 [P] [US1] Añadir el subcomando `create` en `src/adapters/inbound/cli.py` con `--incident-id`, `--raw-text`/`--raw-text -`, `--file`, `--title` y `--created-at`, validando exclusividad de fuentes y coherencia con `--file`; imprimir el documento con `model_dump(mode="json")` y salir con `0`, `1` o `2` según el contrato.
-- [ ] T017 [P] [US1] Completar en `src/adapters/inbound/api/errors.py` la traducción del conflicto de alta a `409 CREATE_ID_CONFLICTO`, usando el manejador ya registrado en T010, y verificar que no se emite documento parcial ni se escribe nada (la CLI mapea el mismo error a salida `1` en T016).
+- [ ] T014 [US1] Implementar `IncidentService.create_incident` en `src/application/services.py`: validar y recortar el identificador, comprobar el texto recortado para vacío y longitud sin alterar el `raw_text` persistido, derivar el título con `derivar_titulo` cuando falte y validar el indicado (no vacío, máximo 200), resolver el instante una sola vez con `ClockPort` si falta `created_at`, clasificar con `classify_impact`, construir el `Incident` en `OPEN` con `duplicate_group_key=None`, persistir y devolver `IncidentCreationResult` con `DuplicateAssessment(None, ())`; traducir el conflicto del puerto a `IncidentAlreadyExistsError`. Citas: `data-model.md` → `Incident.incident_id`, `Incident.title`, `Incident.component`, `Incident.severity`, `Incident.status`, `Incident.created_at`, `Incident.raw_text`.
+- [ ] T015 [P] [US1] Registrar `POST /api/v1/incidents` en `src/adapters/inbound/api/app.py` con `CreateIncidentRequest`/`IncidentCreatedResponse` como modelos y `status_code=201`, rechazando parámetros de consulta desconocidos o repetidos con `CREATE_SOLICITUD_INVALIDA`, sin lógica de negocio en la ruta.
+- [ ] T016 [P] [US1] Añadir el subcomando `create` en `src/adapters/inbound/cli.py` con `--incident-id`, `--raw-text`, `--title` y `--created-at`, validando el identificador y el texto obligatorios, imprimiendo el documento con `model_dump(mode="json")` y saliendo con `0`, `1` o `2` según el contrato.
+- [ ] T017 [P] [US1] Completar en `src/adapters/inbound/api/errors.py` el código `CREATE_ID_CONFLICTO` (409) para `IncidentAlreadyExistsError` y añadir los títulos `CREATE_*` en `src/adapters/inbound/problem.py`, verificando que no se emite documento parcial ni se escribe nada; la CLI mapea el mismo error a salida `1` en T016.
 
 **Punto de control**: el alta persistente funciona por HTTP y CLI y se recupera tras reiniciar el
 proceso. Es el MVP del hito.
@@ -98,7 +100,7 @@ proceso. Es el MVP del hito.
 
 **Objetivo**: devolver en la misma respuesta `201` si existen incidentes equivalentes previos, con
 `duplicate_of` ordenado y `duplicate_group_key` heredada del original, sin fusionar ni modificar
-incidentes existentes y serializando por componente las altas concurrentes.
+incidentes existentes y serializando por componente las altas concurrentes dentro de un único proceso.
 
 **Prueba independiente**: con un original activo almacenado, un reporte equivalente del mismo
 componente y dentro de la ventana de la severidad del más antiguo devuelve `is_duplicate=true` y el
@@ -114,8 +116,8 @@ del mismo componente quedan ambas persistidas y la segunda avisa a la primera.
 
 ### Implementación de la Historia 2
 
-- [ ] T021 [US2] Conectar la detección al alta en `src/application/services.py`: dentro del cerrojo del componente, ejecutar `find_open_duplicates`, `assess_duplicates` y persistir el incidente con la `duplicate_group_key` resultante, devolviendo el mismo veredicto en `IncidentCreationResult`. Citas: `data-model.md` → `Incident.duplicate_group_key`, `DuplicateAssessment.duplicate_group_key`, `DuplicateAssessment.duplicate_of`, `DuplicateAssessment.is_duplicate`.
-- [ ] T022 [US2] Añadir a `IncidentService` el registro de cerrojos por componente (guarda + `threading.Lock` por componente) que serializa detección y escritura dentro del proceso, sin puerto nuevo ni bloqueo distribuido, y documentar el límite en el docstring.
+- [ ] T021 [US2] Añadir a `IncidentService` el registro de cerrojos por componente (guarda + `threading.Lock` por componente) que serializa detección y escritura dentro de un único proceso, sin puerto nuevo ni bloqueo distribuido, y documentar el límite en el docstring.
+- [ ] T022 [US2] Conectar la detección al alta en `src/application/services.py`: dentro del cerrojo del componente, ejecutar `find_open_duplicates`, `assess_duplicates` y persistir el incidente con la `duplicate_group_key` resultante, devolviendo el mismo veredicto en `IncidentCreationResult`. Citas: `data-model.md` → `Incident.duplicate_group_key`, `DuplicateAssessment.duplicate_group_key`, `DuplicateAssessment.duplicate_of`, `DuplicateAssessment.is_duplicate`.
 
 **Punto de control**: US1 y US2 funcionan juntas y los escenarios de falso positivo quedan cubiertos.
 
@@ -137,15 +139,15 @@ referencia anterior a la creación devuelve `422`/salida `1`; un identificador i
 
 - [ ] T023 [P] [US3] Escribir el bloque BDD de SLA en `tests/test_spec_003_lifecycle_sla.py`: activo con contexto completo, fronteras P0 60/61 y P1 180, P2 viernes→lunes, terminal congelado antes y después de `resolved_at`, referencia anterior a la creación, identificador inexistente, referencia omitida y fecha aware.
 - [ ] T024 [P] [US3] Ampliar `tests/domain/test_sla_calculator.py` con `validar_instante_naive`, `resolver_ventana_temporal` y `evaluate_sla_detail`: aware rechazado en los tres campos, `reference_time < created_at` rechazado también en terminales, `resolved_at` obligatorio en terminales y valores de `evaluate_sla_status` sin cambios.
-- [ ] T025 [P] [US3] Añadir pruebas de `evaluate_incident_sla` en `tests/application/test_services.py`: `SLA_INCIDENTE_NO_ENCONTRADO`, `SLA_REFERENCIA_INCONSISTENTE`, `SLA_DATOS_INCONSISTENTES`, resolución única de `now` y operación de sólo lectura.
+- [ ] T025 [P] [US3] Añadir pruebas de `evaluate_incident_sla` en `tests/application/test_services.py`: `SLA_INCIDENTE_NO_ENCONTRADO`, `SLA_REFERENCIA_INCONSISTENTE`, `SLA_DATOS_INCONSISTENTES`, una sola lectura de `ClockPort` y operación de sólo lectura.
 - [ ] T026 [P] [US3] Añadir pruebas de `get_incident` en `tests/adapters/test_sqlite_repository.py`: recupera activos y terminales, mapea `resolved_at`, `recommended_team` y `duplicate_group_key`, y rechaza severidad, estado o equipo fuera de catálogo y fechas aware.
 
 ### Implementación de la Historia 3
 
-- [ ] T027 [US3] Implementar `IncidentService.evaluate_incident_sla` en `src/application/services.py`: resolver `now` una sola vez, cargar con `get_incident`, traducir ausencia a `IncidentNotFoundError`, delegar en `evaluate_sla_detail` y traducir `TemporalInconsistencyError`/`InvalidIncidentError` a `DataInconsistencyError` con `status=422` para la referencia incoherente o `409` para datos incoherentes; no escribir nada. Citas: `data-model.md` → `Incident.created_at`, `Incident.resolved_at`, `Incident.severity`, `Incident.status`, `SLAEvaluationDetail.window`.
-- [ ] T028 [P] [US3] Registrar `GET /api/v1/incidents/{incident_id}/sla` en `src/adapters/inbound/api/app.py`, rechazar parámetros desconocidos o repetidos con `SLA_SOLICITUD_INVALIDA`, parsear `reference_time` con `temporal_contract` y responder con `SLAEvaluationResponse`.
-- [ ] T029 [P] [US3] Añadir el subcomando `sla` en `src/adapters/inbound/cli.py` con `--incident-id` y `--reference-time`, serializando con `model_dump(mode="json")` y mapeando los fallos a salida `1` (inexistente o incoherente) y `2` (entrada inválida).
-- [ ] T030 [P] [US3] Completar en `src/adapters/inbound/api/errors.py` el mapeo de `IncidentNotFoundError` a `404`, de `DataInconsistencyError` a `exc.status` (`409`/`422`) y de la referencia incoherente a `422 SLA_REFERENCIA_INCONSISTENTE`, sin documento parcial; los manejadores se registran en T010 y la ruta en T028.
+- [ ] T027 [US3] Implementar `IncidentService.evaluate_incident_sla` en `src/application/services.py`: resolver el instante una sola vez con `ClockPort`, cargar con `get_incident`, traducir ausencia a `IncidentNotFoundError`, delegar en `evaluate_sla_detail` y traducir `TemporalInconsistencyError`/`InvalidIncidentError` a `DataInconsistencyError` con `status=422` para la referencia incoherente o `409` para datos incoherentes; no escribir nada. Citas: `data-model.md` → `Incident.created_at`, `Incident.resolved_at`, `Incident.severity`, `Incident.status`, `SLAEvaluationDetail.window`.
+- [ ] T028 [P] [US3] Registrar `GET /api/v1/incidents/{incident_id}/sla` en `src/adapters/inbound/api/app.py`, rechazar parámetros desconocidos o repetidos y un identificador compuesto sólo por espacios con `SLA_SOLICITUD_INVALIDA`, parsear `reference_time` con `temporal_contract` y responder con `SLAEvaluationResponse`.
+- [ ] T029 [P] [US3] Añadir el subcomando `sla` en `src/adapters/inbound/cli.py` con `--incident-id` y `--reference-time`, rechazando un identificador vacío o sólo con espacios con `SLA_ID_VACIO` y salida `2`, serializando con `model_dump(mode="json")` y mapeando los fallos a salida `1` (inexistente, incoherente o datos inconsistentes) y `2` (entrada inválida).
+- [ ] T030 [P] [US3] Completar en `src/adapters/inbound/api/errors.py` los códigos de la ruta de SLA —`SLA_INCIDENTE_NO_ENCONTRADO` (404), `SLA_REFERENCIA_INCONSISTENTE` (422) y `SLA_DATOS_INCONSISTENTES` (409 vía `exc.status`)—, añadir los títulos `SLA_*` en `src/adapters/inbound/problem.py`, sin documento parcial; el manejador de `IncidentNotFoundError` se registra en T010 y la ruta en T028.
 
 **Punto de control**: las tres capacidades P1 funcionan de extremo a extremo por HTTP; el MVP completo
 está disponible.
@@ -166,8 +168,8 @@ iguales campo por campo; los fallos equivalentes comparten `code` y la correspon
 ### Pruebas de la Historia 4 (escribir primero, deben fallar)
 
 - [ ] T031 [P] [US4] Escribir el bloque BDD de paridad en `tests/test_spec_003_lifecycle_sla.py`: misma entrada de alta por HTTP y CLI comparada por igualdad estricta de documentos, mismo incidente/referencia de SLA comparado igual, y fallos equivalentes con el mismo `code` y distinto canal de salida.
-- [ ] T032 [P] [US4] Ampliar `tests/adapters/test_cli.py` con `create` y `sla`: salida `0` con JSON, `--raw-text -` y `--file`, conflicto de `--incident-id` con el archivo, salidas `1` y `2`, y `stdout` vacío ante error.
-- [ ] T033 [P] [US4] Ampliar `tests/adapters/test_api.py` con los contratos nuevos: `201` de alta, `200` de SLA, `403`/`404` ajenos al contrato, `422` por campo desconocido en cuerpo y por parámetro desconocido o repetido en consulta, y `content-type: application/problem+json`.
+- [ ] T032 [P] [US4] Ampliar `tests/adapters/test_cli.py` con `create` y `sla`: salida `0` con JSON, `--created-at` malformado o con zona → `2`, `--incident-id` vacío en `sla` → `SLA_ID_VACIO` con salida `2`, conflicto de identificador → salida `1`, salidas `1` y `2` del catálogo y `stdout` vacío ante error.
+- [ ] T033 [P] [US4] Ampliar `tests/adapters/test_api.py` con los contratos nuevos: `201` de alta, `200` de SLA, `403`/`404` ajenos al contrato, `422` por campo desconocido en cuerpo, por parámetro desconocido o repetido en la consulta de SLA, por identificador de SLA compuesto sólo por espacios y por parámetro desconocido en la ruta de alta, `409 SLA_DATOS_INCONSISTENTES` ante datos incoherentes y `content-type: application/problem+json`.
 
 ### Implementación de la Historia 4
 
@@ -181,12 +183,12 @@ iguales campo por campo; los fallos equivalentes comparten `code` y la correspon
 
 **Propósito**: gobernanza documental, evidencia de rendimiento y puertas de calidad del PR.
 
-- [ ] T035 [P] Crear `docs/adr/006-ciclo-vida-duplicados-sla.md` con la plantilla `docs/adr/000-template.md`: detección en el dominio, `SLAEvaluationDetail`, cerrojos por componente, `INSERT` con conflicto, contrato compartido y un diagrama Mermaid de la topología.
+- [ ] T035 [P] Crear `docs/adr/006-ciclo-vida-duplicados-sla.md` con la plantilla `docs/adr/000-template.md`: detección en el dominio, `derivar_titulo` en `models.py`, `SLAEvaluationDetail`, cerrojos por componente, `ClockPort` con `SystemClock` como raíz de composición, `INSERT` con conflicto, contrato compartido y un diagrama Mermaid de la topología.
 - [ ] T036 [P] Actualizar `AGENTS.md` (comandos `create`/`sla`, códigos `CREATE_*`/`SLA_*` y retirada de la afirmación de que `duplicate_group_key` permanece `null`), `README.md` y `docs/ROADMAP.md` (H003 implementado), sin reescribir `CONTEXT_LOG.md` ni `SDD_LOG.md`.
 - [ ] T037 [P] Revisar `docs/adr/002-calculo-sla-horario-habil.md` y anotar que H003 centraliza la validación temporal y congela el cómputo en `resolved_at` sin cambiar la aritmética de ventana hábil ni descontar festivos.
-- [ ] T038 Extender la utilidad de plan de consulta de `src/adapters/outbound/sqlite_repository.py` para exponer `EXPLAIN QUERY PLAN` de la consulta por `duplicate_group_key`/`status`, y ejecutar `uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --iterations 20` y `uv run python tools/benchmark_summary.py --records 10000 --iterations 20` para registrar el uso de `idx_incidents_dup_key` y los tiempos de alta/SLA como evidencia de SC-006.
+- [ ] T038 Extender la utilidad de plan de consulta de `src/adapters/outbound/sqlite_repository.py` para exponer `EXPLAIN QUERY PLAN` de la consulta por `duplicate_group_key`/`status`, y ejecutar `uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --iterations 20` y `uv run python tools/benchmark_summary.py --records 10000 --iterations 20` para registrar el uso de `idx_incidents_dup_key` y el p95 del alta y del SLA con 10.000 activos, texto de hasta 500 caracteres y ejecución secuencial como evidencia de SC-006.
 - [ ] T039 Recorrer `specs/003-incident-lifecycle-sla/quickstart.md` de extremo a extremo sobre `sqlite:///ciclo-vida-demo.db` (alta, duplicado, conflicto, SLA 45/61, P2 viernes→lunes, reinicio, 404 y fecha aware) y corregir cualquier divergencia entre documento y comportamiento.
-- [ ] T040 Ejecutar las puertas finales: `uv run ruff check src/` sin errores con `TID251`/`TID252`, `uv run pytest -v` completo con H001 y H002 sin cambios de valores, y verificar que no reaparecen `src/models.py` ni `src/sla_calculator.py`, que `legacy/triage_rules.py` sigue sin importarse y que `src/adapters/outbound/factory.py` sigue siendo la única raíz de composición.
+- [ ] T040 Ejecutar las puertas finales: `uv run ruff check src/` sin errores con `TID251`/`TID252`, `uv run pytest -v` completo con H001 y H002 sin cambios de valores, y verificar que no reaparecen `src/models.py` ni `src/sla_calculator.py`, que `legacy/triage_rules.py` sigue sin importarse y que `src/adapters/outbound/factory.py` sigue siendo la única raíz de composición e inyecta `SystemClock` a través de `ClockPort`.
 
 ---
 
@@ -207,7 +209,7 @@ iguales campo por campo; los fallos equivalentes comparten `code` y la correspon
 - Las pruebas se escriben y fallan antes de la implementación.
 - Modelos y reglas de dominio antes que servicios; servicios antes que endpoints y comandos.
 - `create_incident` (T014) antes de los bordes T015–T017.
-- La detección (T021) antes de los cerrojos (T022), ambas sobre `src/application/services.py`.
+- La detección (T022) se conecta después de los cerrojos (T021), ambas sobre `src/application/services.py`.
 - `evaluate_incident_sla` (T027) antes de los bordes T028–T030.
 
 ### Archivos compartidos que impiden paralelizar
@@ -223,7 +225,7 @@ iguales campo por campo; los fallos equivalentes comparten `code` y la correspon
 
 ## Oportunidades de paralelización
 
-- **Fase 2**: T003 puede iniciar sola; después T004 y T005 en paralelo; T008 en paralelo con ellas; tras T006, ejecutar T007, T009 y T010 en paralelo (archivos distintos).
+- **Fase 2**: T003 primero (define los tipos que consumen las demás); después T004, T005, T006 y T008 en paralelo (archivos distintos); tras T006, ejecutar T007, T009 y T010 en paralelo.
 - **Fase 3**: T011, T012 y T013 en paralelo; tras T014, T015, T016 y T017 en paralelo.
 - **Fase 4**: T018 y T019 en paralelo; T020 después de T018 por compartir `tests/test_spec_003_lifecycle_sla.py`; T021 y T022 secuenciales por compartir `services.py`.
 - **Fase 5**: T023, T024, T025 y T026 en paralelo; tras T027, T028, T029 y T030 en paralelo.

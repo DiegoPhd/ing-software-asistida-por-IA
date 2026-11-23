@@ -101,6 +101,9 @@ uv run python -m src.adapters.inbound.cli sla \
 # Incidente inexistente: 404 en HTTP, salida 1 en CLI
 uv run python -m src.adapters.inbound.cli sla --incident-id INC-9999
 
+# Identificador vacío: entrada inválida (SLA_ID_VACIO), salida 2
+uv run python -m src.adapters.inbound.cli sla --incident-id "   "
+
 # Fecha con zona horaria: 422 en HTTP, salida 2 en CLI
 uv run python -m src.adapters.inbound.cli sla \
   --incident-id INC-3001 --reference-time 2026-11-20T10:00:00+00:00
@@ -127,6 +130,9 @@ curl "http://127.0.0.1:8000/api/v1/incidents/INC-3101/sla?reference_time=2026-11
   `is_breached: false`, `requires_escalation: false`, `window: "BUSINESS_HOURS"`: el fin de semana y
   las horas fuera de ventana no acumulan.
 - Un campo desconocido en el cuerpo del alta devuelve `422 CREATE_SOLICITUD_INVALIDA`.
+- Un parámetro desconocido en la consulta del alta (`POST /api/v1/incidents?foo=1`) devuelve
+  `422 CREATE_SOLICITUD_INVALIDA`.
+- Un `created_at` malformado o con zona horaria devuelve `422 CREATE_CREACION_INVALIDA`.
 - Un parámetro desconocido o repetido en la auditoría devuelve `422 SLA_SOLICITUD_INVALIDA`.
 
 ## 6 · Persistencia y reinicio
@@ -136,8 +142,8 @@ curl "http://127.0.0.1:8000/api/v1/incidents/INC-3101/sla?reference_time=2026-11
 3. Consulta `sla` y `summary` para ese incidente.
 
 **Esperado**: el incidente sigue disponible con el mismo identificador, título, componente,
-severidad, estado, `created_at`, `recommended_team` y `duplicate_group_key`; aparece en el resumen de
-activos sin duplicarse.
+severidad, estado y `created_at` en los canales; `get_incident` devuelve además el texto original,
+`recommended_team` y `duplicate_group_key`; aparece en el resumen de activos sin duplicarse.
 
 ## 7 · Pruebas de la especificación
 
@@ -164,8 +170,8 @@ uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --itera
 
 **Esperado**: siembra de 10.000 activos y resumen dentro del objetivo de H002. Para el índice nuevo,
 comprueba el plan de consulta por `duplicate_group_key` y `status` (`EXPLAIN QUERY PLAN` debe
-mencionar `idx_incidents_dup_key`) y registra el tiempo del alta y de la auditoría con 10.000 activos
-como evidencia de `SC-006`.
+mencionar `idx_incidents_dup_key`) y registra el p95 del alta y de la auditoría con 10.000 activos,
+texto de hasta 500 caracteres y ejecución secuencial como evidencia de `SC-006`.
 
 ## 9 · Correspondencia con los criterios de éxito
 
@@ -176,8 +182,8 @@ como evidencia de `SC-006`.
 | SC-003 | Comparación estricta HTTP/CLI del documento de SLA |
 | SC-004 | Comparación estricta de `is_duplicate`, `duplicate_of` y `duplicate_group_key` |
 | SC-005 | Fronteras P0 60/61, P1 180 y P2 viernes→lunes |
-| SC-006 | Medición con 10.000 activos |
-| SC-007 | 404, 422 y entradas inválidas sin documentos parciales |
+| SC-006 | p95 < 1 s con 10.000 activos, texto ≤ 500 caracteres y ejecución secuencial |
+| SC-007 | 404, 422, 409 y entradas inválidas sin documentos parciales |
 | SC-008 | Verificación de que el incidente previo no cambia tras un aviso |
 | SC-009 | Presencia del registrado en `summary` |
 | SC-010 | Prueba de dos altas concurrentes con barrera |

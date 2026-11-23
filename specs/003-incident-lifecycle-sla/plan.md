@@ -23,10 +23,12 @@ regla (similitud, ventana por severidad, clave de grupo, SLA y ventana de cómpu
 `src/domain/`; el adaptador SQLite solo añade columnas, el índice
 `idx_incidents_dup_key (duplicate_group_key, status)` y las operaciones de lectura/escritura.
 
-El dominio se amplía con `Incident.recommended_team: Optional[Team]` y
-`Incident.duplicate_group_key: Optional[str]`, una evaluación de SLA con contexto
-(`SLAEvaluationDetail`) y la normalización temporal centralizada que rechaza instantes aware y
-valida `reference_time >= created_at` también para incidentes terminales.
+El dominio se amplía con `Incident.recommended_team: Optional[Team]`,
+`Incident.duplicate_group_key: Optional[str]`, la función pura `derivar_titulo` en `models.py`, una
+evaluación de SLA con contexto (`SLAEvaluationDetail`) y la normalización temporal centralizada que
+rechaza instantes aware y valida `reference_time >= created_at` también para incidentes terminales.
+La aplicación gana `ClockPort` (`now()`), implementado por `SystemClock` en el adaptador de salida e
+inyectado desde `factory.py`, conforme al Principio IV.
 
 ## Contexto Técnico
 
@@ -46,15 +48,16 @@ identificador existente sea conflicto y nunca sobrescriba.
 **Pruebas**: `pytest` con `TestClient` y `CliRunner`; base SQLite de archivo temporal para
 persistencia, reinicio y paridad; base en memoria para dominio y caso de uso. Sin `sleep` ni
 `datetime.now()` en pruebas de dominio; el reloj se sustituye por instantes inyectados y, cuando el
-caso de uso debe resolver el instante actual, se inyecta un `now` explícito en el servicio.
+caso de uso debe resolver el instante actual, se inyecta un doble de `ClockPort`.
 
 **Plataforma objetivo**: servicio HTTP local/servidor y CLI en Windows/Linux/macOS, ejecutado desde
 la raíz del repositorio.
 
 **Tipo de proyecto**: aplicación única Python con dos adaptadores de entrada y uno de salida.
 
-**Objetivos de rendimiento**: alta con veredicto de duplicados y auditoría de SLA por debajo de 1 s
-percibido con 10.000 incidentes activos; el alta no debe degradar el resumen de H002.
+**Objetivos de rendimiento**: alta con veredicto de duplicados y auditoría de SLA con p95 inferior a
+1 s, medido de forma secuencial sobre 10.000 incidentes activos y con un texto de reporte de hasta 500
+caracteres (SC-006); el alta no debe degradar el resumen de H002.
 
 **Restricciones**: fechas naive consistentes (aware se rechaza); formatos ISO 8601 con `T`;
 DTOs de transporte solo en el borde; sin reglas de negocio en aplicación ni adaptadores; serialización
@@ -70,15 +73,15 @@ por componente dentro del proceso; Ruff obligatorio (`E4`, `E7`, `E9`, `F`, `TID
 No se requiere enmienda de la Constitución: el Principio IV ya dispone que "registro y reevaluación
 de SLA… DEBEN añadirse como casos de uso cuando su hito los requiera", y el Principio I ya asigna la
 detección de duplicados a `src/domain/triage_rules.py`. La decisión estructural
-(detección en el dominio + serialización por componente + conflicto de alta por excepción) se
-documenta en **ADR-006** dentro del mismo PR, conforme a la puerta 6.
+(detección en el dominio + serialización por componente + conflicto de alta por excepción + `ClockPort`)
+se documenta en **ADR-006** dentro del mismo PR, conforme a la puerta 6.
 
 | Principio | Estado | Evidencia o acción requerida |
 |---|---|---|
-| I. Núcleo determinista único | PASS | `Incident` gana `recommended_team` y `duplicate_group_key`; `SLAEvaluationDetail` y la ventana de cómputo viven en `models.py`; similitud, ventana por severidad y clave de grupo en `triage_rules.py`. Ningún DTO ni fila SQL redeclara reglas. |
-| II. Dominio puro y auditable | PASS | Solo `dataclasses`, `datetime`, `difflib`, `types`, `typing`. Sin reloj, sin E/S, sin `print`. La normalización temporal es una función pura y determinista; el `now` entra desde el caso de uso. |
+| I. Núcleo determinista único | PASS | `Incident` gana `recommended_team` y `duplicate_group_key`; `derivar_titulo`, `SLAEvaluationDetail` y la ventana de cómputo viven en `models.py`; similitud, ventana por severidad y clave de grupo en `triage_rules.py`. Ningún DTO ni fila SQL redeclara reglas ni deriva campos por su cuenta. |
+| II. Dominio puro y auditable | PASS | Solo `dataclasses`, `datetime`, `difflib`, `types`, `typing`. Sin reloj, sin E/S, sin `print`. La normalización temporal es una función pura y determinista; el instante entra por `ClockPort` y el dominio lo recibe como argumento explícito. |
 | III. Arquitectura hexagonal estricta | PASS | `adapters → application → domain`. El adaptador SQLite no calcula similitud ni SLA; el servicio solo valida, serializa por componente, secuencia y traduce errores. |
-| IV. Puertos explícitos y composición única | PASS (sin enmienda) | `IncidentRepositoryPort` conserva sus cinco métodos; se precisa la semántica de `save_incident` (inserta y rechaza conflicto) sin cambiar la firma. `factory.py` sigue siendo la única raíz de composición. |
+| IV. Puertos explícitos y composición única | PASS (sin enmienda) | `IncidentRepositoryPort` conserva sus cinco métodos; se precisa la semántica de `save_incident` (inserta y rechaza conflicto) sin cambiar la firma. Se añade `ClockPort` (`now()`) con `SystemClock` en el adaptador de salida, tal como el Principio IV anticipa. `factory.py` sigue siendo la única raíz de composición. |
 | V. Stack gobernado | PASS | Sin dependencias nuevas; `difflib` y `sqlite3` son biblioteca estándar. |
 | VI. Fronteras verificadas con Ruff | PASS | Se mantienen `pyproject.toml` y los `ruff.toml` jerárquicos; el contrato de ciclo de vida vive en `inbound/` y el CLI no importa `api/`. |
 | VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_003_lifecycle_sla.py` con los cinco bloques de aceptación (alta, duplicados, SLA, paridad/errores, fronteras y concurrencia); pruebas de dominio para similitud, ventana y normalización temporal; pruebas del adaptador para columnas, índice y conflicto. |
@@ -117,27 +120,29 @@ specs/003-incident-lifecycle-sla/
 src/
 ├── domain/
 │   ├── models.py                    # MODIFICADO · Incident + recommended_team/duplicate_group_key;
-│   │                                #            SLAEvaluationDetail + SLAComputationWindow
+│   │                                #            derivar_titulo; SLAEvaluationDetail +
+│   │                                #            SLAComputationWindow
 │   ├── triage_rules.py              # MODIFICADO · umbral, ventana por severidad,
 │   │                                #            DuplicateAssessment y assess_duplicates
 │   └── sla_calculator.py            # MODIFICADO · normalización temporal única y
 │                                    #            evaluate_sla_detail (ventana + contexto)
 ├── application/
+│   ├── ports.py                     # MODIFICADO · ClockPort (now() -> datetime)
 │   └── services.py                  # MODIFICADO · create_incident, evaluate_incident_sla,
 │                                    #            IncidentNotFoundError, IncidentAlreadyExistsError,
-│                                    #            serialización por componente, now inyectable
+│                                    #            serialización por componente, ClockPort inyectable
 ├── adapters/
 │   ├── inbound/
 │   │   ├── temporal_contract.py     # NUEVO · validación ISO 8601 naive compartida
 │   │   ├── lifecycle_contract.py    # NUEVO · CreateIncidentRequest, IncidentCreatedResponse,
 │   │   │                            #         SLAEvaluationResponse y mapeos
 │   │   ├── summary_contract.py      # MODIFICADO · delega el parseo en temporal_contract
-│   │   ├── api/schemas.py           # MODIFICADO · reexporta/usa los DTOs del contrato
 │   │   ├── api/app.py               # MODIFICADO · las dos rutas nuevas
 │   │   ├── api/errors.py            # MODIFICADO · prefijo por ruta, 404 y 422 incoherente
 │   │   ├── problem.py               # MODIFICADO · títulos de los códigos nuevos
 │   │   └── cli.py                   # MODIFICADO · subcomandos create y sla
 │   └── outbound/
+│       ├── system_clock.py          # NUEVO · SystemClock (implementación de ClockPort)
 │       └── sqlite_repository.py     # MODIFICADO · columnas, migración, índice dup_key,
 │                                    #            INSERT con conflicto, mapeo ampliado
 tests/
@@ -173,11 +178,12 @@ resuelven con estas elecciones y su justificación:
 | D4 | Equivalencia de duplicados en `triage_rules.py` (`difflib`, umbral 0.75, ventana por severidad del más antiguo) | El Principio I asigna los duplicados al dominio; el adaptador no puede decidir similitud |
 | D5 | `find_open_duplicates` entrega candidatos estructurales (activos, mismo componente, distinto id) | Mantiene la firma de H002 y la regla en un solo lugar |
 | D6 | `save_incident` usa `INSERT` y traduce `IntegrityError` a `IncidentAlreadyExistsError` | FR-008/FR-016: conflicto sin sobrescritura y alta atómica |
-| D7 | Serialización por componente con cerrojos en proceso dentro de `IncidentService` | FR-030 con el supuesto de almacenamiento único y sin bloqueo distribuido; sin puerto especulativo |
+| D7 | Serialización por componente con cerrojos en proceso dentro de `IncidentService`; la garantía se acota a un único proceso | FR-030 con el supuesto de almacenamiento único y sin bloqueo distribuido; sin puerto especulativo |
 | D8 | `DataInconsistencyError` gana `status` opcional (409 por defecto) | FR-022 exige 422 en HTTP con salida 1 en CLI; el resumen conserva su 409 |
 | D9 | Contrato compartido `inbound/lifecycle_contract.py` + `temporal_contract.py` | Paridad verificable y un único parser ISO 8601 para los dos canales |
 | D10 | Códigos estables `CREATE_*` y `SLA_*`; 404 para inexistente | Traducción por ruta sin reutilizar códigos de triaje o resumen |
 | D11 | Pruebas de concurrencia y volumen fuera de aserciones de tiempo | Determinismo en CI; el tiempo se reporta como evidencia del PR |
+| D12 | `ClockPort` en `src/application/ports.py`, implementado por `SystemClock` en el adaptador de salida e inyectado por `factory.py` | El Principio IV incorpora `ClockPort` cuando un caso de uso requiere el instante; el dominio sigue recibiendo el tiempo como argumento explícito |
 
 ## Fase 1 · Diseño y Contratos
 
@@ -196,10 +202,12 @@ Puntos contractuales fijados:
 - **SLA**: `GET /api/v1/incidents/{incident_id}/sla?reference_time=...` → `200`; sin
   `reference_time` rige el instante actual informado en la respuesta; identificador inexistente →
   `404 SLA_INCIDENTE_NO_ENCONTRADO`; referencia anterior a la creación → `422
-  SLA_REFERENCIA_INCONSISTENTE` (CLI salida 1); entrada malformada → `422` (CLI salida 2).
-- **CLI**: `create --incident-id ... (--raw-text ...|--raw-text -|--file ...) [--title ...]
-  [--created-at ...]` y `sla --incident-id ... [--reference-time ...]`; JSON idéntico al HTTP,
-  serializado con `model_dump(mode="json")` para que las fechas coincidan byte a byte.
+  SLA_REFERENCIA_INCONSISTENTE` (CLI salida 1); datos almacenados incoherentes → `409
+  SLA_DATOS_INCONSISTENTES` (CLI salida 1); entrada malformada → `422` (CLI salida 2).
+- **CLI**: `create --incident-id ... --raw-text ... [--title ...] [--created-at ...]` y
+  `sla --incident-id ... [--reference-time ...]`; JSON idéntico al HTTP, serializado con
+  `model_dump(mode="json")` para que las fechas coincidan byte a byte. El alta recibe el texto como
+  argumento: leer archivos o `stdin` queda fuera del alcance de H003.
 - **Duplicados**: `duplicate_of` ordenado del más antiguo al más reciente (desempate por
   identificador ascendente); sólo equivalentes previos; `duplicate_group_key` nula si
   `duplicate_of` está vacío y, en caso contrario, el identificador del original más antiguo o la
@@ -212,16 +220,19 @@ Puntos contractuales fijados:
 
 ## Orden de Implementación
 
-1. **Dominio**: ampliar `Incident`; añadir `SLAComputationWindow`, `SLAEvaluationDetail` y
-   `evaluate_sla_detail`; centralizar `validar_instante_naive` y `resolver_ventana_temporal`; añadir
+1. **Dominio**: ampliar `Incident`; añadir `derivar_titulo` (primera línea, máximo 200),
+   `SLAComputationWindow`, `SLAEvaluationDetail` y `evaluate_sla_detail`; centralizar
+   `validar_instante_naive` y `resolver_ventana_temporal`; añadir
    `DUPLICATE_SIMILARITY_THRESHOLD`, `DUPLICATE_WINDOW_DAYS`, `DuplicateAssessment`,
    `is_equivalent` y `assess_duplicates`.
-2. **Aplicación**: añadir `IncidentAlreadyExistsError`, `IncidentNotFoundError`,
-   `IncidentCreationResult`, `create_incident` y `evaluate_incident_sla`; inyectar `now` como
-   callable opcional; mantener el reporte de duplicados fuera del dominio de transporte.
-3. **Salida**: extender el esquema y la migración; crear el índice `idx_incidents_dup_key`; cambiar
-   la escritura a `INSERT` con traducción de conflicto; mapear las columnas nuevas en lectura y
-   escritura; sembrar duplicados sintéticos solo en el seeder del benchmark.
+2. **Aplicación**: añadir `ClockPort` en `ports.py`; añadir `IncidentAlreadyExistsError`,
+   `IncidentNotFoundError`, `IncidentCreationResult`, `create_incident` y `evaluate_incident_sla`;
+   recibir `clock: Optional[ClockPort]` (con `datetime.now()` como respaldo heredado de H002) y
+   mantener el reporte de duplicados fuera del dominio de transporte.
+3. **Salida**: crear `SystemClock` e inyectarlo desde `factory.py`; extender el esquema y la migración;
+   crear el índice `idx_incidents_dup_key`; cambiar la escritura a `INSERT` con traducción de
+   conflicto; mapear las columnas nuevas en lectura y escritura; sembrar duplicados sintéticos solo en
+   el seeder del benchmark.
 4. **Entrada**: crear `temporal_contract.py` y `lifecycle_contract.py`; registrar los dos endpoints,
    ampliar el prefijo de errores por ruta y los títulos de `problem.py`; añadir los subcomandos
    `create` y `sla` con sus códigos de salida.
@@ -230,7 +241,8 @@ Puntos contractuales fijados:
    rechazado); aplicación (códigos y serialización); adaptador (columnas, índice, conflicto,
    candidatos); concurrencia con dos hilos y base de archivo.
 6. **Validación**: `uv run ruff check src/` y `uv run pytest -v`; comprobar el plan de consulta del
-   índice nuevo con `EXPLAIN QUERY PLAN` y el alta/SLA con 10.000 activos.
+   índice nuevo con `EXPLAIN QUERY PLAN` y el p95 del alta/SLA con 10.000 activos, texto ≤ 500
+   caracteres y ejecución secuencial (SC-006).
 7. **Gobernanza**: ADR-006 con Mermaid; actualizar `AGENTS.md`, `README.md` y `docs/ROADMAP.md`;
    retirar de `AGENTS.md` la afirmación de que `duplicate_group_key` permanece `null`.
 
@@ -254,6 +266,7 @@ Puntos contractuales fijados:
 | El `INSERT` rompe el seeder del benchmark al reutilizar una base | El seeder conserva una sentencia propia de siembra idempotente; la ruta de alta usa `INSERT` estricto y tiene prueba de conflicto |
 | Divergencia de formato de fechas entre HTTP y CLI | Ambos serializan el mismo modelo con `model_dump(mode="json")` y la prueba de paridad compara documentos por igualdad estricta |
 | Índice nuevo sin uso real | Se verifica con `EXPLAIN QUERY PLAN` la consulta por `duplicate_group_key`/`status` y se documenta que la ruta de alta no lo necesita para decidir equivalencia |
+| Detección de duplicados O(candidatos × longitud del texto) con 10.000 activos | La evidencia de SC-006 fija p95 < 1 s con texto ≤ 500 caracteres y ejecución secuencial; si el escenario no lo cumple, se añade un prefiltro por ventana en SQL manteniendo la similitud y la clave de grupo en el dominio |
 
 ## Criterios de Cierre
 
@@ -261,8 +274,9 @@ Puntos contractuales fijados:
 - `uv run ruff check src/` sin errores con `TID251`/`TID252` activos.
 - `tests/test_spec_003_lifecycle_sla.py` cubre los cinco bloques BDD y la paridad HTTP/CLI de alta
   y SLA por igualdad estricta de documentos.
-- Alta con 10.000 activos y auditoría de SLA dentro del objetivo de `SC-006`, con evidencia de
-  `EXPLAIN QUERY PLAN` del índice `idx_incidents_dup_key`.
+- Alta con 10.000 activos y auditoría de SLA dentro del objetivo de `SC-006` (p95 < 1 s, texto ≤ 500
+  caracteres, ejecución secuencial), con evidencia de `EXPLAIN QUERY PLAN` del índice
+  `idx_incidents_dup_key`.
 - Ningún incidente previo se modifica al registrar un duplicado; el conflicto de identificador no
   sobrescribe (prueba explícita de FR-008 y SC-008).
 - ADR-006, `AGENTS.md`, `README.md` y `docs/ROADMAP.md` actualizados en el mismo PR.

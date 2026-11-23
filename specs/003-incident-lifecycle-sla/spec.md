@@ -31,7 +31,7 @@ Como persona de guardia o integrador de monitoreo, necesito registrar el reporte
 
 1. **Dado** un reporte nuevo con identificador libre y sin incidentes equivalentes abiertos, **cuando** se registra por HTTP o por consola, **entonces** el alta responde 201 en HTTP, queda almacenado con la severidad, el componente y el equipo derivados de la clasificación por impacto vigente, en estado inicial `OPEN`, con el instante de creación indicado o el de la solicitud, e informa `is_duplicate=false` y `duplicate_of=[]` en ambos canales.
 2. **Dado** un incidente registrado, **cuando** el servicio se detiene y vuelve a arrancar sobre el mismo almacenamiento, **entonces** el incidente sigue disponible con los mismos valores.
-3. **Dado** un incidente registrado, **cuando** se consulta el resumen de incidentes activos, **entonces** aparece con los mismos datos con los que fue registrado, sin duplicarse ni alterarse.
+3. **Dado** un incidente registrado, **cuando** se consulta el resumen de incidentes activos, **entonces** aparece una sola vez con el mismo identificador, título, componente, severidad y estado con los que fue registrado, sin duplicarse ni alterarse.
 4. **Dado** un identificador que ya corresponde a un incidente almacenado, **cuando** se intenta registrar un reporte con ese identificador, **entonces** el alta responde 409 y la consola termina con código de salida 1, el incidente previo queda intacto y no se modifica ningún otro dato.
 5. **Dado** un reporte con identificador o texto vacío, compuesto sólo por espacios, o que excede las longitudes admitidas, **cuando** se intenta registrar, **entonces** responde 422 y la consola termina con código de salida 2, con un mensaje comprensible y sin persistir nada.
 
@@ -124,35 +124,36 @@ Como ingeniero de guardia que trabaja por terminal o que automatiza diagnóstico
 ### Requisitos Funcionales
 
 - **FR-001**: El sistema DEBE ofrecer el registro de incidentes entrantes por HTTP (`POST /api/v1/incidents`) y por consola (`create`) con la misma semántica, los mismos campos y los mismos valores; la igualdad verificable entre canales se fija en FR-021.
-- **FR-002**: El sistema DEBE ofrecer la consulta del estado de SLA de un incidente concreto por HTTP (`GET /api/v1/incidents/{incident_id}/sla`) y por consola (`sla`) con la misma semántica, los mismos campos y los mismos valores.
+- **FR-002**: El sistema DEBE ofrecer la consulta del estado de SLA de un incidente concreto por HTTP (`GET /api/v1/incidents/{incident_id}/sla`) y por consola (`sla`) con la misma semántica, los mismos campos y los mismos valores; la paridad verificable entre canales se fija en FR-021.
 - **FR-003**: Un registro válido DEBE persistirse de forma duradera: el incidente debe sobrevivir al reinicio del proceso y quedar visible para cualquier consulta posterior sobre el mismo almacenamiento.
 - **FR-004**: El registro DEBE clasificar el reporte con la regla de triaje por impacto vigente, derivando severidad, componente y equipo responsable del texto original; el cliente no impone severidad, componente ni equipo.
 - **FR-005**: El incidente registrado DEBE iniciar en estado `OPEN`. El instante de creación DEBE ser un campo opcional e idéntico en ambos canales, con el formato temporal estricto de FR-024; si se omite, se resuelve una sola vez el instante de la solicitud y se informa en la respuesta.
 - **FR-006**: El registro DEBE conservar el texto original sin normalizar, porque es la base de comparaciones futuras y de la auditoría.
-- **FR-007**: El título es opcional en la entrada; cuando se omite, se deriva del texto original de forma determinista y estable.
+- **FR-007**: El título es opcional en la entrada: si se indica, se recorta, no puede quedar vacío y no supera los 200 caracteres; si se omite, se deriva del texto original de forma determinista y estable (primera línea recortada, máximo 200 caracteres).
 - **FR-008**: El identificador del incidente es obligatorio y único; un registro con un identificador ya existente DEBE rechazarse como conflicto (409 en HTTP, código de salida 1 en la consola) sin sobrescribir, fusionar ni alterar el incidente previo.
-- **FR-009**: El registro DEBE rechazar identificadores o textos vacíos, compuestos sólo por espacios, o que excedan las longitudes admitidas, con 422 en HTTP y código de salida 2 en la consola, sin persistir nada.
+- **FR-009**: El registro DEBE rechazar identificadores o textos vacíos, compuestos sólo por espacios, o que excedan las longitudes admitidas —64 caracteres el identificador y 10 000 el texto—, con 422 en HTTP y código de salida 2 en la consola, sin persistir nada.
 - **FR-010**: El registro DEBE detectar incidentes equivalentes abiertos comparando sólo contra incidentes en estado `OPEN` o `IN_PROGRESS`, del mismo componente y distintos del propio incidente; los estados terminales `RESOLVED` y `CLOSED` quedan excluidos de la comparación.
 - **FR-011**: Dos incidentes DEBEN considerarse equivalentes cuando la similitud de sus textos originales en minúsculas alcanza el umbral vigente de la Constitución y la diferencia entre sus instantes de creación, medida del más antiguo al más reciente, es cero o está dentro de la ventana de la severidad del más antiguo.
-- **FR-012**: La respuesta del alta DEBE devolver los datos del incidente registrado (identificador, título, componente, severidad, equipo responsable, estado e instante de creación) junto con `duplicate_group_key`, `is_duplicate` y `duplicate_of`, y DEBE responder 201 aunque existan duplicados.
+- **FR-012**: La respuesta del alta DEBE devolver los datos del incidente registrado (identificador, título, componente, severidad, equipo responsable, estado, instante de creación e instante de resolución, nulo en el alta) junto con `duplicate_group_key`, `is_duplicate` y `duplicate_of`, y DEBE responder 201 aunque existan duplicados.
 - **FR-013**: `duplicate_of` DEBE contener los identificadores de los incidentes equivalentes abiertos que preceden al nuevo en el orden canónico de creación (instante de creación ascendente y, en empate, identificador ascendente), ordenados de más antiguo a más reciente; los equivalentes posteriores no se incluyen y `is_duplicate` es verdadero si y sólo si `duplicate_of` no está vacío.
 - **FR-014**: `duplicate_group_key` DEBE ser nula si `duplicate_of` está vacío; en caso contrario, el identificador del original más antiguo entre los incidentes precedentes o, si ese original ya es duplicado, la clave heredada de su grupo.
 - **FR-015**: El registro NUNCA DEBE rechazarse por la existencia de duplicados, ni fusionar, modificar, reasignar o eliminar incidentes existentes; el aviso es informativo.
 - **FR-016**: El registro DEBE ser atómico: o persiste el incidente completo con su clasificación y su clave de grupo, o no persiste nada y no informa un aviso parcial.
-- **FR-017**: La consulta de SLA DEBE aceptar un identificador y un instante de referencia opcional en ISO 8601 local; si se omite, se resuelve el instante actual una sola vez y se informa en la respuesta.
-- **FR-018**: La consulta de SLA DEBE devolver, como mínimo: `incident_id`, `severity`, `status`, `created_at`, `resolved_at` cuando exista, `reference_time`, `elapsed_minutes`, `allowed_minutes`, `remaining_minutes`, `is_breached`, `requires_escalation` y la ventana de cómputo aplicada.
+- **FR-017**: La consulta de SLA DEBE aceptar un identificador obligatorio y un instante de referencia opcional en ISO 8601 local; si se omite, se resuelve el instante actual una sola vez y se informa en la respuesta. Un identificador vacío o compuesto sólo por espacios es entrada inválida: en la consola produce el código estable `SLA_ID_VACIO` y salida 2, y en HTTP un identificador compuesto sólo por espacios responde 422, mientras que una ruta sin identificador no alcanza el endpoint y responde 404.
+- **FR-018**: La consulta de SLA DEBE devolver, como mínimo: `incident_id`, `severity`, `status`, `created_at`, `resolved_at` (nulo cuando el incidente sigue activo), `reference_time`, `elapsed_minutes`, `allowed_minutes`, `remaining_minutes`, `is_breached`, `requires_escalation` y la ventana de cómputo aplicada.
 - **FR-019**: Los valores de SLA DEBEN ser exactamente los de la política vigente: `P0` con 60 minutos y `P1` con 240 minutos en cómputo 24x7; `P2` con 480 minutos y `P3` con 1440 minutos en cómputo de lunes a viernes dentro de la ventana hábil; minutos enteros truncados.
 - **FR-020**: El incumplimiento DEBE ser estrictamente mayor que el máximo permitido, el escalamiento DEBE exigir estado activo, ausencia de incumplimiento y al menos el 75 % del máximo permitido redondeado hacia abajo, y el fin del cómputo DEBE ser el instante de resolución si existe o el instante de referencia en caso contrario.
-- **FR-021**: Para los mismos datos y las mismas entradas, los canales HTTP y consola DEBEN devolver campos, valores y veredictos idénticos; los fallos equivalentes DEBEN compartir código estable, clase de error y mapeo de estado HTTP a código de salida.
+- **FR-021**: Para los mismos datos y las mismas entradas, los canales HTTP y consola DEBEN devolver campos, valores y veredictos idénticos. La paridad de los fallos se fija por el **código estable compartido** (`CREATE_*`/`SLA_*`): cada código DEBE producir el mismo documento de error en ambos canales y un código de salida determinado por la naturaleza del fallo: `2` si la entrada es inválida por forma o formato y `1` si el incidente no existe, el identificador ya existe, el dato almacenado es incoherente, la referencia es incompatible con la creación o se produce un fallo inesperado. La única excepción explícita al estado HTTP es `422 SLA_REFERENCIA_INCONSISTENTE`, que usa salida `1` porque la referencia no es una entrada mal formada.
 - **FR-022**: Una consulta de SLA con un instante de referencia anterior al instante de creación del incidente DEBE rechazarse por completo con 422 en HTTP y código de salida 1 en la consola, sin minutos negativos ni valores parciales.
 - **FR-023**: Una consulta de SLA sobre un identificador inexistente DEBE rechazarse con 404 en HTTP y código de salida 1 en la consola, con un error de "no encontrado" claramente distinguible de una respuesta válida.
 - **FR-024**: El instante de referencia y el instante de creación DEBEN expresarse como fecha y hora locales sin zona horaria, en ISO 8601 con separador `T`; un valor con zona horaria, formato distinto o tipo incorrecto DEBE rechazarse con 422 en HTTP y código de salida 2 en la consola.
 - **FR-025**: La consulta de SLA DEBE ser una operación de sólo lectura: no modifica el incidente, su estado, su clave de grupo ni ningún otro dato.
 - **FR-026**: Los estados terminales `RESOLVED` y `CLOSED` NO DEBEN escalar nunca y su cómputo de SLA DEBE detenerse en el instante de resolución, con independencia de que el instante de referencia sea anterior o posterior a esa resolución.
 - **FR-027**: El registro y la consulta DEBEN usar las reglas canónicas de triaje, duplicados y SLA del núcleo, sin introducir umbrales, ventanas ni políticas paralelas.
-- **FR-028**: Los errores DEBEN informar qué campo o parámetro falló y un mensaje comprensible, sin exponer detalles internos ni entregar documentos parciales.
+- **FR-028**: Los errores DEBEN informar qué campo o parámetro falló y un mensaje comprensible en el documento `application/problem+json`, mediante `code`, `detail` y la lista `errors[]` con el campo afectado, sin exponer detalles internos ni entregar documentos parciales.
 - **FR-029**: Los canales DEBEN rechazar campos, parámetros u opciones que no formen parte de su contrato, en lugar de ignorarlos en silencio.
-- **FR-030**: El registro DEBE serializar por componente la comprobación de equivalencias y la escritura del nuevo incidente, de modo que, si dos reportes equivalentes concurren, el que se confirma en segundo lugar informe al primero y ambos queden persistidos.
+- **FR-030**: El registro DEBE serializar por componente la comprobación de equivalencias y la escritura del nuevo incidente dentro de un único proceso sobre el almacenamiento compartido, de modo que, si dos reportes equivalentes concurren, el que se confirma en segundo lugar informe al primero y ambos queden persistidos. La garantía no cubre réplicas ni procesos concurrentes distintos.
+- **FR-031**: Una incoherencia en los datos almacenados —severidad o estado fuera del catálogo, equipo desconocido o instante de resolución anterior al de creación— DEBE rechazar la consulta de SLA por completo con 409 y el código `SLA_DATOS_INCONSISTENTES` en HTTP, y con código de salida 1 en la consola, sin inventar valores por defecto ni entregar un documento parcial.
 
 ### Interfaces de los Canales
 
@@ -161,14 +162,12 @@ Como ingeniero de guardia que trabaja por terminal o que automatiza diagnóstico
 | Alta persistente de incidente | `POST /api/v1/incidents` → 201 | `create` |
 | Auditoría de SLA de un incidente | `GET /api/v1/incidents/{incident_id}/sla` → 200 | `sla` |
 
-- La auditoría acepta el parámetro opcional `reference_time` en ISO 8601 local, sin zona horaria; el alta acepta `created_at` con el mismo formato.
-- El alta responde 201 tanto si no hay duplicados como si los hay; un identificador ya existente responde 409.
-- La auditoría responde 404 si el incidente no existe.
-- Un `reference_time` anterior a `created_at` responde 422 y la consola termina con código de salida 1.
-- Una entrada malformada responde 422 y la consola termina con código de salida 2.
-- Todo fallo informa un código estable y un mensaje comprensible, sin documento parcial.
-- Documento de alta: datos del incidente registrado, `duplicate_group_key`, `is_duplicate` y `duplicate_of`.
-- Documento de SLA: `incident_id`, `severity`, `status`, `created_at`, `resolved_at`, `reference_time`, `elapsed_minutes`, `allowed_minutes`, `remaining_minutes`, `is_breached`, `requires_escalation` y la ventana de cómputo aplicada.
+- La auditoría acepta el parámetro opcional `reference_time` y el alta acepta `created_at`, ambos en ISO 8601 local, sin zona horaria (FR-024).
+- El alta responde 201 tanto si no hay duplicados como si los hay; un identificador ya existente responde 409 (FR-008, FR-012).
+- La auditoría responde 404 si el incidente no existe (FR-023) y 409 si los datos almacenados son incoherentes (FR-031).
+- Un `reference_time` anterior a `created_at` responde 422 (FR-022) y una entrada malformada responde 422 (FR-024); la consola usa salida 1 para la referencia incoherente y 2 para la entrada inválida (FR-021).
+- Un identificador vacío o compuesto sólo por espacios en la consola del SLA es entrada inválida (código `SLA_ID_VACIO`, salida 2); en HTTP la ruta sin identificador responde 404 (FR-017).
+- Los documentos de cada canal son los de `contracts/` y contienen exactamente los campos de FR-012 y FR-018; todo fallo informa un código estable y un mensaje comprensible, sin documento parcial (FR-028).
 
 ### Entidades Clave
 
@@ -189,11 +188,11 @@ Como ingeniero de guardia que trabaja por terminal o que automatiza diagnóstico
 - **SC-003**: Para el mismo incidente y el mismo instante de referencia, HTTP y consola coinciden en el 100 % de los campos y valores de SLA, sin discrepancias.
 - **SC-004**: Para los mismos datos, `is_duplicate`, `duplicate_of` y `duplicate_group_key` informados por HTTP y consola coinciden en el 100 % de las ejecuciones de comparación.
 - **SC-005**: El 100 % de los casos frontera de SLA (límite exacto, un minuto por encima, umbral exacto de escalamiento y semana hábil) produce el resultado esperado, sin diferencias entre canales.
-- **SC-006**: Un operador puede registrar un incidente o consultar su SLA en una sola operación por canal, con un tiempo de respuesta percibido por debajo de 1 segundo con 10.000 incidentes activos almacenados.
-- **SC-007**: El 100 % de las consultas rechazadas por identificador inexistente, incoherencia temporal o entrada inválida informa un error comprensible y no entrega datos parciales.
+- **SC-006**: Un operador puede registrar un incidente o consultar su SLA en una sola operación por canal con un p95 por debajo de 1 segundo, medido en ejecuciones secuenciales sobre 10.000 incidentes activos y con un texto de reporte de hasta 500 caracteres.
+- **SC-007**: El 100 % de las consultas rechazadas por identificador inexistente, incoherencia temporal o de datos, o entrada inválida informa un error comprensible y no entrega datos parciales.
 - **SC-008**: Ningún aviso de duplicado altera, fusiona ni elimina incidentes: el 100 % de los registros con aviso conserva intactos todos los incidentes previos.
-- **SC-009**: El 100 % de los incidentes registrados aparece en el resumen de activos con los mismos datos con los que fue registrado, sin necesidad de intervención manual.
-- **SC-010**: En el 100 % de las ejecuciones de dos registros equivalentes concurrentes, ambos incidentes quedan persistidos y la respuesta del segundo informa al primero, sin rechazos por duplicidad.
+- **SC-009**: El 100 % de los incidentes registrados aparece en el resumen de activos con el mismo `incident_id`, `title`, `component`, `severity` y `status` con los que fue registrado, sin necesidad de intervención manual.
+- **SC-010**: En el 100 % de las ejecuciones de dos registros equivalentes concurrentes dentro de un único proceso, ambos incidentes quedan persistidos y la respuesta del segundo informa al primero, sin rechazos por duplicidad.
 
 ## Supuestos
 
@@ -229,5 +228,6 @@ Como ingeniero de guardia que trabaja por terminal o que automatiza diagnóstico
 - Historial de reevaluaciones, instantáneas periódicas de SLA o informes de incumplimiento a lo largo del tiempo; cada consulta evalúa un único instante.
 - Calendario de festivos y cómputo de SLA en husos horarios distintos del local.
 - Paginación, exportación a archivo y suscripción a cambios.
+- Lectura del reporte desde archivo o `stdin` en el comando `create`: el alta recibe el texto como argumento (`--raw-text`).
 - Autenticación y autorización específicas para el registro o la consulta.
 - Detección de duplicados entre componentes distintos o contra incidentes terminales.

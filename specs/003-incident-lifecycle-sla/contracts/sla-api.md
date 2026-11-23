@@ -46,7 +46,8 @@ Todos usan `application/problem+json`.
 | 404 | `SLA_INCIDENTE_NO_ENCONTRADO` | El identificador no corresponde a ningún incidente almacenado |
 | 500 | `SLA_ERROR_INTERNO` | Fallo inesperado; no expone detalles internos |
 
-Una ruta HTTP sin identificador no alcanza el endpoint (el router responde `404`); el código
+Una ruta HTTP sin identificador no alcanza el endpoint (el router responde `404`) y un identificador
+compuesto sólo por espacios se rechaza con `422 SLA_SOLICITUD_INVALIDA`; el código
 `SLA_ID_VACIO` se reserva a la CLI, donde `--incident-id` puede llegar vacío o sólo con espacios.
 
 ## Ejemplos

@@ -9,21 +9,22 @@ auditoría aplican. Los nombres de los campos públicos están en
 
 ## 1 · Entidades de dominio
 
-Todas son `dataclass(frozen=True)` y se declaran en `src/domain/models.py`; ningún adaptador las
-redeclara. Los campos nuevos se añaden con valor por defecto para no romper las construcciones
-existentes de H001/H002.
+Todas las entidades con campos son `dataclass(frozen=True)` y se declaran en `src/domain/models.py`;
+`SLAComputationWindow` es un alias `Literal` del mismo módulo. Ningún adaptador las redeclara. Los
+campos nuevos se añaden con valor por defecto para no romper las construcciones existentes de
+H001/H002.
 
 ### `Incident` (ampliado)
 
 | Campo | Tipo | Regla |
 |---|---|---|
 | `incident_id` | `str` | Único; se recorta y no puede quedar vacío; máximo 64 caracteres |
-| `title` | `str` | Recortado; si se omite se deriva del texto (primera línea, máximo 200) |
+| `title` | `str` | Recortado; si se omite se deriva del texto con `derivar_titulo` de `models.py` (primera línea, máximo 200) |
 | `component` | `str` | Componente del catálogo cerrado derivado del triaje |
 | `severity` | `SeverityLevel` | `P0`, `P1`, `P2`, `P3` |
 | `status` | `IncidentStatus` | `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED` |
 | `created_at` | `datetime` | Naive; instante de creación indicado o el de la solicitud |
-| `resolved_at` | `datetime \| None` | Naive; obligatorio en estados terminales y posterior a `created_at` |
+| `resolved_at` | `datetime \| None` | Naive; obligatorio en estados terminales y posterior o igual a `created_at` |
 | `raw_text` | `str \| None` | Texto original sin normalizar; base de la comparación de duplicados |
 | `recommended_team` | `Team \| None` | **Nuevo**. Equipo del catálogo cerrado; `None` en filas históricas |
 | `duplicate_group_key` | `str \| None` | **Nuevo**. Identificador del original del grupo o clave heredada |
@@ -61,8 +62,8 @@ existentes de H001/H002.
 2. `incident_id` y `raw_text` son obligatorios, no vacíos y no superan 64 y 10 000 caracteres.
 3. El título indicado, si existe, no es vacío y no supera 200 caracteres; si se omite, se deriva de
    forma determinista del texto.
-4. `created_at` es opcional; si se omite, el servicio resuelve `datetime.now()` **una sola vez** y lo
-   informa en la respuesta.
+4. `created_at` es opcional; si se omite, el servicio obtiene el instante de `ClockPort` **una sola
+   vez** y lo informa en la respuesta.
 5. Un identificador ya almacenado se rechaza con conflicto; el incidente previo no se sobrescribe,
    fusiona, reasigna ni modifica.
 6. La persistencia es atómica: o se guarda el incidente completo con su clasificación y su clave de
@@ -87,8 +88,8 @@ existentes de H001/H002.
 
 **SLA**
 
-14. `reference_time` es opcional; si se omite, el servicio resuelve `datetime.now()` una sola vez y
-    lo informa.
+14. `reference_time` es opcional; si se omite, el servicio obtiene el instante de `ClockPort` una sola
+    vez y lo informa.
 15. `reference_time >= created_at` siempre; en caso contrario la consulta se rechaza completa.
 16. En terminales, `resolved_at` existe, es posterior o igual a `created_at` y el cómputo termina
     ahí, con independencia de que `reference_time` sea anterior o posterior a la resolución.
@@ -245,7 +246,12 @@ traduce al código estable correspondiente.
 | `check_health` | — | `bool` | Señal de conectividad |
 
 La firma no cambia respecto de H002; sólo se precisa la semántica de escritura. `IncidentService`
-mantiene el cerrojo por componente que serializa detección y alta dentro del proceso.
+mantiene el cerrojo por componente que serializa detección y alta dentro de un único proceso.
+
+El reloj es un puerto secundario: `ClockPort` en `src/application/ports.py` expone `now() -> datetime`,
+`SystemClock` lo implementa en `src/adapters/outbound/system_clock.py` y `factory.py` lo inyecta como
+única raíz de composición. Si el servicio no recibe reloj, conserva el `datetime.now()` de H002. El
+dominio sigue sin reloj propio.
 
 ## 8 · Configuración de la fuente
 
@@ -272,6 +278,6 @@ esquema, la migración y los índices se aplican de forma idempotente al instanc
 | SLA terminal | `RESOLVED` con `resolved_at` y referencias antes y después de la resolución |
 | Incoherencias | `reference_time < created_at`; `resolved_at < created_at`; fecha aware |
 | Concurrencia | Dos hilos con barrera, mismo componente y textos equivalentes; el `created_at` del segundo es posterior (o su identificador es canónicamente mayor a igual instante) para que el aviso sea determinista |
-| Volumen | 10.000 activos para medir alta, SLA y plan de consulta |
+| Volumen | 10.000 activos para medir alta, SLA y plan de consulta; el alta de la medición usa un texto de hasta 500 caracteres y se ejecuta de forma secuencial (SC-006) |
 
 No se usan `datetime.now()` ni `sleep` en las pruebas de dominio: el instante y el reloj se inyectan.
