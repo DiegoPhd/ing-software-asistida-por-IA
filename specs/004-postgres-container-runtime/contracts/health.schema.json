@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://incidentops.local/esquemas/health.schema.json",
+  "title": "Documento de salud de IncidentOps",
+  "description": "Resultado de evaluar una sola vez la conectividad con la base configurada. HTTP lo devuelve con 200 o 503; la CLI lo escribe en stdout con salida 0 o 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "database"],
+  "oneOf": [
+    {
+      "properties": {
+        "status": { "const": "ok" },
+        "database": { "const": "connected" }
+      }
+    },
+    {
+      "properties": {
+        "status": { "const": "error" },
+        "database": { "const": "unavailable" }
+      }
+    }
+  ],
+  "examples": [
+    { "status": "ok", "database": "connected" },
+    { "status": "error", "database": "unavailable" }
+  ]
+}

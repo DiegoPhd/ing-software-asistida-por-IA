@@ -60,6 +60,12 @@ Se adopta la **Opción C (Iteración por bloques de días con intersección de v
 > resumen de activos añade `summarize_active_incidents`, que no introduce
 > umbrales nuevos.
 
+> **Precisión H003 (2026-11-22)**: `validar_instante_naive` y
+> `resolver_ventana_temporal` centralizan la comprobación de fechas naive, el
+> requisito `reference_time >= created_at` —también en terminales— y el fin
+> del cómputo congelado en `resolved_at`. La aritmética de la ventana hábil y
+> del 75 % no cambia y los festivos locales siguen sin descontarse.
+
 ```mermaid
 flowchart TD
     A["Inicio: evaluate_sla_status(incident, reference_time)"] --> B["Obtener SLARule y end_time = resolved_at or reference_time"]

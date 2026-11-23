@@ -8,7 +8,7 @@ description: Redacta escenarios BDD estilo Dan North (Dado / Cuando / Entonces) 
 ## Cuándo usar esta skill
 
 - Vas a escribir o revisar la sección de escenarios de una especificación
-  (`docs/specs/hNNN-*.md`; también llamada `spec.md` en los comandos de Spec Kit).
+  (`specs/hNNN-*.md`; también llamada `spec.md` en los comandos de Spec Kit).
 - Implementas o completas pruebas de aceptación para el adaptador REST (FastAPI) o el
   adaptador CLI (Typer).
 - Detectas escenarios sin prueba, pruebas sin escenario o pruebas que comparten
@@ -163,7 +163,7 @@ Sigue siendo **un** escenario y **una** función `test_bdd_*`, parametrizada con
 ### 2.5 Dónde vive el escenario
 
 - Sección `## N. Escenarios BDD` de la especificación del hito
-  (`docs/specs/hNNN-*.md`).
+  (`specs/hNNN-*.md`).
 - Cada escenario abre con `### E-NN — <título>`.
 - Al cierre de la sección, una tabla de trazabilidad:
 
@@ -430,7 +430,7 @@ def almacen_sqlite(tmp_path, monkeypatch) -> Path:
 ## 8. Referencias del repositorio
 
 - `docs/constitution.md` §3.2 y §3.3.
-- `docs/specs/h001-triaje-multi-interfaz.md` §8 (escenarios E-01 a E-08) y §9 (plan de
+- `specs/h001-triaje-multi-interfaz.md` §8 (escenarios E-01 a E-08) y §9 (plan de
   pruebas).
 - `tests/conftest.py` (pinzas `cliente_http`, `runner_cli`, `reportes_muestra`).
 - `tests/test_spec_001_triage.py` (mapeo 1:1 y prueba de paridad HTTP/CLI).

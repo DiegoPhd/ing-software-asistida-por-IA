@@ -12,14 +12,18 @@ import pytest
 from src.domain.models import (
     Incident,
     IncidentStatus,
+    InvalidIncidentError,
     SeverityLevel,
     TemporalInconsistencyError,
 )
 from src.domain.sla_calculator import (
     SLA_POLICY_TABLE,
+    evaluate_sla_detail,
     evaluate_sla_status,
     get_sla_rule_for_severity,
+    resolver_ventana_temporal,
     summarize_active_incidents,
+    validar_instante_naive,
 )
 
 # 2026-11-16 es lunes: todas las fronteras hábiles caben en la ventana 08:00-18:00.
@@ -214,3 +218,163 @@ def test_tabla_de_politicas_es_inmutable() -> None:
 def test_severidad_fuera_de_la_politica_es_rechazada() -> None:
     with pytest.raises(ValueError):
         get_sla_rule_for_severity("P9")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# H003 · Normalización temporal y evaluación con contexto
+# ---------------------------------------------------------------------------
+
+
+def test_validar_instante_naive_acepta_naive_y_rechaza_aware() -> None:
+    """FR-024: la normalización única rechaza la zona horaria, no la convierte."""
+    validar_instante_naive(LUNES, "created_at")
+
+    with pytest.raises(TemporalInconsistencyError):
+        validar_instante_naive(LUNES.astimezone(), "created_at")
+
+
+@pytest.mark.parametrize(
+    ("incidente", "campo"),
+    [
+        (_incidente(created_at=LUNES.astimezone()), "created_at"),
+        (
+            _incidente(
+                status="RESOLVED",
+                resolved_at=(LUNES + timedelta(minutes=5)).astimezone(),
+            ),
+            "resolved_at",
+        ),
+    ],
+)
+def test_evaluate_sla_detail_rechaza_aware_en_los_tres_campos(
+    incidente: Incident, campo: str
+) -> None:
+    """Los tres instantes del cómputo deben ser naive."""
+    with pytest.raises(TemporalInconsistencyError):
+        evaluate_sla_detail(incidente, LUNES + timedelta(minutes=10))
+
+    with pytest.raises(TemporalInconsistencyError):
+        evaluate_sla_detail(_incidente(), (LUNES + timedelta(minutes=10)).astimezone())
+
+
+def test_resolver_ventana_temporal_deriva_la_ventana_de_la_politica() -> None:
+    """FR-018: 24x7 para P0/P1 y hábil para P2/P3, sin mirar el adaptador."""
+    _, fin_p0, ventana_p0 = resolver_ventana_temporal(
+        _incidente(severity="P0"), LUNES + timedelta(minutes=30)
+    )
+    _, fin_p2, ventana_p2 = resolver_ventana_temporal(
+        _incidente(severity="P2"), LUNES + timedelta(minutes=30)
+    )
+
+    assert fin_p0 == LUNES + timedelta(minutes=30)
+    assert fin_p2 == LUNES + timedelta(minutes=30)
+    assert ventana_p0 == "24x7"
+    assert ventana_p2 == "BUSINESS_HOURS"
+
+
+def test_resolver_ventana_congela_el_fin_en_resolved_at() -> None:
+    """FR-026: en terminales el fin del cómputo es la resolución."""
+    resolucion = LUNES + timedelta(minutes=20)
+    terminal = _incidente(status="RESOLVED", resolved_at=resolucion)
+
+    _, fin, ventana = resolver_ventana_temporal(
+        terminal, LUNES + timedelta(days=1)
+    )
+
+    assert fin == resolucion
+    assert ventana == "24x7"
+
+
+def test_referencia_anterior_a_la_creacion_se_rechaza_tambien_en_terminales() -> None:
+    """FR-022: la referencia nunca precede a la creación, ni en un terminal."""
+    terminal = _incidente(
+        status="RESOLVED", resolved_at=LUNES + timedelta(minutes=30)
+    )
+
+    with pytest.raises(TemporalInconsistencyError):
+        resolver_ventana_temporal(terminal, LUNES - timedelta(minutes=1))
+
+
+def test_terminal_sin_resolved_at_es_dato_incoherente() -> None:
+    """FR-031: un terminal sin resolución es incoherencia de datos."""
+    with pytest.raises(InvalidIncidentError):
+        resolver_ventana_temporal(
+            _incidente(status="CLOSED"), LUNES + timedelta(minutes=5)
+        )
+
+
+def test_resolved_at_anterior_a_created_at_es_dato_incoherente() -> None:
+    """FR-031: la resolución no puede preceder a la creación."""
+    with pytest.raises(InvalidIncidentError):
+        resolver_ventana_temporal(
+            _incidente(
+                status="RESOLVED", resolved_at=LUNES - timedelta(minutes=1)
+            ),
+            LUNES + timedelta(minutes=5),
+        )
+
+
+def test_severidad_desconocida_es_dato_incoherente_en_la_auditoria() -> None:
+    """FR-031: sin política vigente no se inventan valores por defecto."""
+    with pytest.raises(InvalidIncidentError):
+        resolver_ventana_temporal(
+            _incidente(severity="P9"), LUNES + timedelta(minutes=5)  # type: ignore[arg-type]
+        )
+
+
+def test_evaluate_sla_detail_conserva_los_valores_de_h002() -> None:
+    """El cálculo de H002 no cambia: solo se le adjunta el contexto."""
+    referencia = LUNES + timedelta(minutes=61)
+    incidente = _incidente(severity="P0")
+
+    detalle = evaluate_sla_detail(incidente, referencia)
+
+    assert detalle.evaluation == evaluate_sla_status(incidente, referencia)
+    assert detalle.incident == incidente
+    assert detalle.reference_time == referencia
+    assert detalle.window == "24x7"
+    assert detalle.evaluation.is_breached is True
+
+
+def test_evaluate_sla_detail_p2_viernes_a_lunes() -> None:
+    """FR-018: la ventana hábil se informa y excluye el fin de semana."""
+    viernes = datetime(2026, 11, 20, 17, 0, 0)
+    lunes = datetime(2026, 11, 23, 9, 0, 0)
+
+    detalle = evaluate_sla_detail(
+        _incidente(severity="P2", created_at=viernes), lunes
+    )
+
+    assert detalle.window == "BUSINESS_HOURS"
+    assert detalle.evaluation.elapsed_minutes == 120
+    assert detalle.evaluation.allowed_minutes == 480
+
+
+@pytest.mark.parametrize(
+    "referencia",
+    [
+        datetime(2026, 11, 16, 8, 10, 0),
+        datetime(2026, 11, 16, 9, 0, 0),
+    ],
+)
+def test_terminal_congelado_antes_y_despues_de_la_resolucion(
+    referencia: datetime,
+) -> None:
+    """FR-026: el reloj de SLA no retrocede ni crece tras la resolución."""
+    terminal = _incidente(
+        status="RESOLVED", resolved_at=LUNES + timedelta(minutes=10)
+    )
+
+    detalle = evaluate_sla_detail(terminal, referencia)
+
+    assert detalle.evaluation.elapsed_minutes == 10
+    assert detalle.evaluation.requires_escalation is False
+
+
+def test_referencia_igual_a_la_creacion_da_cero() -> None:
+    """Caso límite: cero minutos, sin incumplimiento ni escalamiento."""
+    detalle = evaluate_sla_detail(_incidente(), LUNES)
+
+    assert detalle.evaluation.elapsed_minutes == 0
+    assert detalle.evaluation.is_breached is False
+    assert detalle.evaluation.requires_escalation is False

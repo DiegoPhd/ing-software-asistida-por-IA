@@ -1,10 +1,11 @@
 """Puertos de salida de la capa de aplicación (Constitución §IV).
 
-`IncidentRepositoryPort` es el único puerto vigente de H002: la política de SLA
-es una constante del dominio y el instante de referencia es un argumento
-explícito del caso de uso.
+`IncidentRepositoryPort` conserva la firma de H002 y precisa la semántica de
+escritura; `ClockPort` incorpora el reloj como puerto secundario cuando el caso
+de uso debe resolver el instante actual (H003).
 """
 
+from datetime import datetime
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from src.domain.models import Incident
@@ -15,7 +16,12 @@ class IncidentRepositoryPort(Protocol):
     """Contrato persistido que debe cumplir todo adaptador de incidentes."""
 
     def save_incident(self, incident: Incident) -> None:
-        """Registra o reemplaza un incidente validado."""
+        """Inserta un incidente validado y rechaza el conflicto de identificador.
+
+        Nunca reemplaza ni fusiona: un identificador ya almacenado se informa
+        como conflicto para que el alta no sobrescriba el incidente previo
+        (FR-008/FR-016).
+        """
         ...
 
     def get_incident(self, incident_id: str) -> Optional[Incident]:
@@ -34,4 +40,13 @@ class IncidentRepositoryPort(Protocol):
 
     def check_health(self) -> bool:
         """Señal de conectividad del almacenamiento."""
+        ...
+
+
+@runtime_checkable
+class ClockPort(Protocol):
+    """Reloj inyectable para resolver el instante de la solicitud una sola vez."""
+
+    def now(self) -> datetime:
+        """Devuelve el instante actual como fecha naive local."""
         ...

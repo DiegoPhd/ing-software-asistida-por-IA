@@ -1,6 +1,6 @@
 # Especificación de Funcionalidad: Resumen de Incidentes Activos
 
-**Rama de la funcionalidad**: `diego.betancourt/reto-N` (pendiente de asignación)
+**Rama de la funcionalidad**: rama actual (pendiente de asignación)
 
 **Creado**: 2026-11-22
 

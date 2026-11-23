@@ -28,14 +28,14 @@ web y terminal.
   compuesto) y la composición en `src/adapters/outbound/factory.py`. Evidencia en
   [ADR-005](adr/005-resumen-activos-hexagonal.md).
 
-### Deuda pendiente que habilita H003
+### Deuda que habilitó H003 — **cerrada**
 
-- `find_open_duplicates` solo entrega candidatos activos del mismo componente:
-  falta la similitud de texto y la ventana por severidad (P0 1 día, P1 2 días,
-  P2 3 días, P3 4 días) y el `duplicate_group_key` sigue en `null`.
+- `find_open_duplicates` entregaba solo candidatos activos del mismo componente; H003 añadió la
+  similitud de texto y la ventana por severidad (P0 1 día, P1 2 días, P2 3 días, P3 4 días) en el
+  dominio y resolvió `duplicate_group_key` con la clave del original más antiguo.
 - Los días festivos locales siguen sin descontarse del cómputo hábil (ADR-002).
 
-## H003 · Ciclo de vida, duplicados y SLA
+## H003 · Ciclo de vida, duplicados y SLA — **Entregado (2026-11-22)**
 
 Registrar incidentes entrantes de forma persistente, alertar cuando ya existe otro equivalente
 abierto y auditar su SLA en cualquier instante de referencia.
@@ -43,11 +43,15 @@ abierto y auditar su SLA en cualquier instante de referencia.
 - **Valor**: trazabilidad del incidente, menos trabajo duplicado y SLA auditable a posteriori.
 - **Listo cuando**: un incidente registrado conserva su historial, detecta duplicados abiertos y su
   estado de SLA puede reevaluarse en cualquier momento.
-- **Habilitado por H002**: el puerto `IncidentRepositoryPort` ya expone
-  `save_incident`, `get_incident` y `find_open_duplicates`; la calibración de
-  similitud y la ventana por severidad es la deuda pendiente de este hito.
+- **Entregado**: `POST /api/v1/incidents` y `cli create` comparten
+  `IncidentService.create_incident` y `inbound/lifecycle_contract.py`; `GET
+  /api/v1/incidents/{incident_id}/sla` y `cli sla` comparten
+  `IncidentService.evaluate_incident_sla`. La equivalencia, la ventana por severidad y la ventana
+  de cómputo viven en `src/domain/`; el reloj entra por `ClockPort`/`SystemClock` desde
+  `factory.py`; la persistencia usa `INSERT` estricto, migración idempotente e
+  `idx_incidents_dup_key`. Evidencia en [ADR-006](adr/006-ciclo-vida-duplicados-sla.md).
 
-## H004 · Persistencia relacional dedicada y runtime en contenedores
+## H004 · Persistencia relacional dedicada y runtime en contenedores — **Entregado (2026-11-23)**
 
 Preparar el servicio para ejecución reproducible en contenedores, con base de datos relacional
 dedicada y verificación real de conectividad operativa.
@@ -55,6 +59,16 @@ dedicada y verificación real de conectividad operativa.
 - **Valor**: entorno reproducible y dependencia de datos explícita y verificable.
 - **Listo cuando**: el servicio arranca en contenedor y confirma conectividad efectiva con su base
   de datos dedicada.
+- **Entregado**: `GET /health` y `cli health` comparten `inbound/health_contract.py` y
+  `IncidentService.check_health`; `src/adapters/outbound/postgres_repository.py` implementa el
+  puerto completo con `psycopg`, DDL idempotente y `INSERT` estricto; `factory.py` selecciona
+  SQLite o PostgreSQL por `DATABASE_URL` y distingue ausencia de vacío. El despliegue de referencia
+  vive en `Dockerfile`, `docker-compose.yml`, `.dockerignore` y `.env.example`, y se verifica con
+  `tools/verify_runtime.py --compose --resiliencia`. Evidencia en
+  [ADR-004](adr/004-persistencia-postgresql-y-runtime-contenedores.md) y
+  [ADR-008](adr/008-runtime-contenedores-docker-compose.md).
+- **Deuda deliberada**: el bloqueo por componente sigue siendo de proceso; no hay migraciones
+  versionadas ni pooler y los datos SQLite no se migran automáticamente.
 
 ---
 

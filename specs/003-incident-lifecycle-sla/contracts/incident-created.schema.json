@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://incidentops.local/contracts/incident-created.schema.json",
+  "title": "Incidente registrado y aviso de duplicados",
+  "description": "Documento canónico del alta, compartido por POST /api/v1/incidents y el comando create.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "incident_id",
+    "title",
+    "component",
+    "severity",
+    "recommended_team",
+    "status",
+    "created_at",
+    "resolved_at",
+    "duplicate_group_key",
+    "is_duplicate",
+    "duplicate_of"
+  ],
+  "properties": {
+    "incident_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "component": {
+      "type": "string",
+      "enum": [
+        "payments-gateway",
+        "auth-identity",
+        "database-cluster",
+        "infra-certificates",
+        "security-audit",
+        "reporting-api"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "recommended_team": {
+      "type": ["string", "null"],
+      "enum": ["Backend-Core", "Security-IAM", "Data-DBA", "Platform-SRE", "otros", null]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"],
+      "description": "El alta siempre produce OPEN."
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3}|\\.[0-9]{6})?$",
+      "description": "ISO 8601 local sin zona horaria y con separador T."
+    },
+    "resolved_at": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3}|\\.[0-9]{6})?$",
+      "description": "Nulo en el alta; obligatorio en estados terminales."
+    },
+    "duplicate_group_key": {
+      "type": ["string", "null"],
+      "description": "Nula si duplicate_of está vacío; identificador del original o clave heredada."
+    },
+    "is_duplicate": {
+      "type": "boolean",
+      "description": "Verdadero si y sólo si duplicate_of no está vacío."
+    },
+    "duplicate_of": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Equivalentes previos, de más antiguo a más reciente, desempate por identificador ascendente."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "is_duplicate": { "const": true } },
+        "required": ["is_duplicate"]
+      },
+      "then": {
+        "properties": {
+          "duplicate_group_key": { "type": "string", "minLength": 1 },
+          "duplicate_of": { "minItems": 1 }
+        }
+      },
+      "else": {
+        "properties": {
+          "duplicate_group_key": { "type": "null" },
+          "duplicate_of": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

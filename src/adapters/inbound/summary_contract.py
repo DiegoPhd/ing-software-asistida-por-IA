@@ -4,25 +4,14 @@ Los nombres y tipos del documento canónico viven en un solo lugar; el CLI no
 importa nada del adaptador HTTP y ambos canales serializan el mismo objeto.
 """
 
-import re
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
 
-from src.application.services import SUMMARY_REFERENCIA_INVALIDA, ValidationError
+from src.adapters.inbound.temporal_contract import parse_instante_naive
+from src.application.services import SUMMARY_REFERENCIA_INVALIDA
 from src.domain.models import ActiveIncidentsSummary
-
-# `YYYY-MM-DDTHH:MM:SS[.ffffff]`: separador `T` obligatorio y sin zona horaria.
-# Python 3.10 solo admite 3 o 6 dígitos fraccionarios en `fromisoformat`.
-_PATRON_REFERENCIA = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3}|\.\d{6})?$"
-)
-
-_MENSAJE_REFERENCIA = (
-    "El instante de referencia debe usar el formato "
-    "YYYY-MM-DDTHH:MM:SS[.ffffff], con separador 'T' y sin zona horaria."
-)
 
 
 class ActiveIncidentItem(BaseModel):
@@ -49,30 +38,10 @@ class ActiveIncidentsSummaryResponse(BaseModel):
 def parse_reference_time(valor: Optional[str]) -> Optional[datetime]:
     """Valida el instante de referencia ISO 8601 naive, o devuelve `None`.
 
-    Un espacio en lugar de `T`, una zona horaria o un valor no parseable se
-    rechazan con el mismo código estable en ambos canales.
+    Delega en el parser temporal compartido conservando el código estable
+    `SUMMARY_REFERENCIA_INVALIDA` y su comportamiento de H002.
     """
-    if valor is None:
-        return None
-
-    texto = valor.strip()
-    if not _PATRON_REFERENCIA.match(texto):
-        raise ValidationError(
-            SUMMARY_REFERENCIA_INVALIDA, "reference_time", _MENSAJE_REFERENCIA
-        )
-
-    try:
-        instante = datetime.fromisoformat(texto)
-    except ValueError as exc:
-        raise ValidationError(
-            SUMMARY_REFERENCIA_INVALIDA, "reference_time", _MENSAJE_REFERENCIA
-        ) from exc
-
-    if instante.tzinfo is not None and instante.tzinfo.utcoffset(instante) is not None:
-        raise ValidationError(
-            SUMMARY_REFERENCIA_INVALIDA, "reference_time", _MENSAJE_REFERENCIA
-        )
-    return instante
+    return parse_instante_naive(valor, "reference_time", SUMMARY_REFERENCIA_INVALIDA)
 
 
 def to_summary_response(summary: ActiveIncidentsSummary) -> ActiveIncidentsSummaryResponse:

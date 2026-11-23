@@ -19,7 +19,10 @@ from src.adapters.outbound.factory import (
 )
 from src.adapters.outbound.sqlite_repository import SQLiteIncidentRepository
 from src.application.ports import IncidentRepositoryPort
-from src.application.services import IncidentService
+from src.application.services import (
+    IncidentAlreadyExistsError,
+    IncidentService,
+)
 from src.domain.models import Incident, InvalidIncidentError
 from src.domain.sla_calculator import summarize_active_incidents
 
@@ -174,7 +177,14 @@ def test_migra_raw_text_en_bases_heredadas(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "url",
-    ["postgresql://localhost/incidentops", "mysql://localhost/incidentops", "sqlite://"],
+    [
+        pytest.param("mysql://localhost/incidentops", id="mysql"),
+        pytest.param("sqlite://", id="sqlite-sin-ruta"),
+        pytest.param("sqlite:///", id="sqlite-sin-archivo"),
+        pytest.param("postgres://localhost/incidentops", id="alias-postgres"),
+        pytest.param("", id="vacia"),
+        pytest.param("   ", id="solo-espacios"),
+    ],
 )
 def test_rechaza_database_url_con_esquema_no_soportado(url: str) -> None:
     with pytest.raises(ConfigurationError):
@@ -182,7 +192,7 @@ def test_rechaza_database_url_con_esquema_no_soportado(url: str) -> None:
 
 
 def test_resuelve_memoria_y_archivo(tmp_path: Path) -> None:
-    assert resolve_database_path("") == ":memory:"
+    assert resolve_database_path() == ":memory:"
     assert resolve_database_path("sqlite:///:memory:") == ":memory:"
 
     ruta = tmp_path / "incidentops.db"
@@ -190,6 +200,14 @@ def test_resuelve_memoria_y_archivo(tmp_path: Path) -> None:
 
     repositorio = create_repository(f"sqlite:///{ruta}")
     assert repositorio.check_health() is True
+
+
+def test_la_url_vacia_es_configuracion_invalida() -> None:
+    """H004: definida pero vacía no cae a memoria en silencio (FR-006)."""
+    with pytest.raises(ConfigurationError):
+        resolve_database_path("")
+    with pytest.raises(ConfigurationError):
+        create_repository("   ")
 
 
 @pytest.mark.parametrize(
@@ -283,6 +301,202 @@ def test_consulta_puntual_y_candidatos_de_duplicados() -> None:
 
     candidatos = repositorio.find_open_duplicates(_incidente("INC-1"))
     assert [candidato.incident_id for candidato in candidatos] == ["INC-2"]
+
+
+def test_ida_y_vuelta_de_equipo_y_clave_de_grupo() -> None:
+    """FR-012: las columnas nuevas se persisten y se recuperan sin alterarse."""
+    repositorio = SQLiteIncidentRepository()
+    incidente = Incident(
+        incident_id="INC-1",
+        title="Pagos caídos",
+        component="payments-gateway",
+        severity="P0",
+        status="OPEN",
+        created_at=REFERENCIA - timedelta(minutes=30),
+        raw_text="Pasarela de pagos caída.",
+        recommended_team="Backend-Core",
+        duplicate_group_key="INC-0",
+    )
+
+    repositorio.save_incident(incidente)
+
+    assert repositorio.get_incident("INC-1") == incidente
+
+
+def test_migra_columnas_nuevas_en_bases_de_h002(tmp_path: Path) -> None:
+    """D6: una base anterior arranca, migra columnas y crea el índice nuevo."""
+    ruta = tmp_path / "h002.db"
+    conexion = sqlite3.connect(ruta)
+    conexion.execute(
+        """
+        CREATE TABLE incidents (
+            incident_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            component TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT,
+            raw_text TEXT
+        )
+        """
+    )
+    conexion.execute(
+        "INSERT INTO incidents VALUES "
+        "('INC-1', 'Heredado', 'payments-gateway', 'P0', 'OPEN', "
+        "'2026-11-20T11:00:00', NULL, NULL)"
+    )
+    conexion.commit()
+    conexion.close()
+
+    repositorio = SQLiteIncidentRepository(str(ruta))
+    columnas = {
+        fila["name"] for fila in repositorio.conn.execute("PRAGMA table_info(incidents)")
+    }
+    indices = {
+        fila["name"] for fila in repositorio.conn.execute("PRAGMA index_list(incidents)")
+    }
+
+    assert {"recommended_team", "duplicate_group_key"} <= columnas
+    assert "idx_incidents_dup_key" in indices
+    heredado = repositorio.get_incident("INC-1")
+    assert heredado is not None
+    assert heredado.recommended_team is None
+    assert heredado.duplicate_group_key is None
+
+
+def test_save_incident_rechaza_el_conflicto_sin_sobrescribir() -> None:
+    """FR-008: el `INSERT` estricto impide reemplazar el incidente previo."""
+    repositorio = SQLiteIncidentRepository()
+    original = _incidente("INC-1")
+    repositorio.save_incident(original)
+
+    with pytest.raises(IncidentAlreadyExistsError):
+        repositorio.save_incident(
+            Incident(
+                incident_id="INC-1",
+                title="Intento de sobrescritura",
+                component="auth-identity",
+                severity="P3",
+                status="OPEN",
+                created_at=REFERENCIA,
+                raw_text="Otro texto.",
+            )
+        )
+
+    assert repositorio.get_incident("INC-1") == original
+
+
+def test_la_siembra_sintetica_es_idempotente() -> None:
+    """La siembra del benchmark reutiliza su sentencia y no duplica filas."""
+    repositorio = SQLiteIncidentRepository()
+
+    repositorio.seed_synthetic_incidents(10)
+    repositorio.seed_synthetic_incidents(10)
+
+    fila = repositorio.conn.execute("SELECT COUNT(*) AS total FROM incidents").fetchone()
+    assert fila["total"] == 10
+
+
+def test_get_incident_mapea_terminales_y_sus_columnas() -> None:
+    """FR-018: la auditoría recupera activos y terminales con su contexto."""
+    repositorio = SQLiteIncidentRepository()
+    resuelto = Incident(
+        incident_id="INC-R",
+        title="Resuelto",
+        component="auth-identity",
+        severity="P1",
+        status="RESOLVED",
+        created_at=REFERENCIA - timedelta(hours=2),
+        resolved_at=REFERENCIA - timedelta(minutes=30),
+        raw_text="Cuenta bloqueada.",
+        recommended_team="Security-IAM",
+        duplicate_group_key="INC-0",
+    )
+    repositorio.save_incident(resuelto)
+
+    assert repositorio.get_incident("INC-R") == resuelto
+
+
+@pytest.mark.parametrize(
+    "columnas",
+    ["severity", "status", "recommended_team", "created_at"],
+)
+def test_get_incident_rechaza_datos_incoherentes(
+    columnas: str,
+) -> None:
+    """FR-031: severidad, estado, equipo o fecha fuera de catálogo se rechazan."""
+    repositorio = SQLiteIncidentRepository()
+    repositorio.conn.execute(
+        "INSERT INTO incidents (incident_id, title, component, severity, status, "
+        "created_at, recommended_team) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "INC-X",
+            "Incoherente",
+            "payments-gateway",
+            "P9" if columnas == "severity" else "P0",
+            "INVESTIGATING" if columnas == "status" else "OPEN",
+            "2026-11-20T11:00:00+00:00"
+            if columnas == "created_at"
+            else "2026-11-20T11:00:00",
+            "Equipo-Inventado" if columnas == "recommended_team" else None,
+        ),
+    )
+    repositorio.conn.commit()
+
+    with pytest.raises(InvalidIncidentError):
+        repositorio.get_incident("INC-X")
+
+
+def test_rechaza_equipo_fuera_del_catalogo_al_escribir() -> None:
+    """El adaptador valida el catálogo cerrado antes de escribir."""
+    repositorio = SQLiteIncidentRepository()
+    incidente = Incident(
+        incident_id="INC-1",
+        title="Pagos",
+        component="payments-gateway",
+        severity="P0",
+        status="OPEN",
+        created_at=REFERENCIA,
+        recommended_team="Equipo-Inventado",  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(InvalidIncidentError):
+        repositorio.save_incident(incidente)
+
+
+def test_las_fechas_nuevas_se_persisten_con_microsegundos() -> None:
+    """FR-009: el texto crudo cumple `YYYY-MM-DDTHH:MM:SS.ffffff`."""
+    repositorio = SQLiteIncidentRepository()
+    incidente = Incident(
+        incident_id="INC-US",
+        title="Microsegundos",
+        component="payments-gateway",
+        severity="P0",
+        status="RESOLVED",
+        created_at=datetime(2026, 11, 20, 10, 0, 0),
+        resolved_at=datetime(2026, 11, 20, 10, 0, 30, 654321),
+    )
+
+    repositorio.save_incident(incidente)
+
+    fila = repositorio.conn.execute(
+        "SELECT created_at, resolved_at FROM incidents WHERE incident_id = ?",
+        ("INC-US",),
+    ).fetchone()
+    assert fila["created_at"] == "2026-11-20T10:00:00.000000"
+    assert fila["resolved_at"] == "2026-11-20T10:00:30.654321"
+    assert repositorio.get_incident("INC-US") == incidente
+
+
+def test_el_plan_de_la_clave_de_grupo_usa_el_indice_nuevo() -> None:
+    """T038: `EXPLAIN QUERY PLAN` menciona `idx_incidents_dup_key`."""
+    repositorio = SQLiteIncidentRepository()
+    repositorio.seed_synthetic_incidents(500)
+
+    plan = repositorio.query_plan_duplicados("INC-00001")
+
+    assert any("idx_incidents_dup_key" in linea for linea in plan)
 
 
 def test_el_dominio_ordena_lo_que_el_adaptador_no_ordena() -> None:

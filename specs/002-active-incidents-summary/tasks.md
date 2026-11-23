@@ -1,6 +1,6 @@
 # Tareas: Resumen de Incidentes Activos (H002)
 
-**Entrada**: Documentos de diseño de `specs/001-active-incidents-summary/`
+**Entrada**: Documentos de diseño de `specs/002-active-incidents-summary/`
 
 **Prerrequisitos**: [plan.md](./plan.md) (obligatorio), [spec.md](./spec.md) (obligatorio), [research.md](./research.md), [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
 
@@ -18,7 +18,7 @@
 
 - Proyecto único Python: `src/` y `tests/` en la raíz del repositorio.
 - Imports absolutos desde la raíz (`from src...`), sin imports relativos (`TID252`).
-- El nombre `test_spec_002_summary.py` identifica el hito H002; su especificación vive en `specs/001-active-incidents-summary`, la primera carpeta creada con `.specify`, y no debe confundirse con el número del hito.
+- El nombre `test_spec_002_summary.py` identifica el hito H002 y su especificación vive en `specs/002-active-incidents-summary`, alineada con el número del hito.
 - Código, docstrings y documentación en español.
 
 ---
@@ -141,7 +141,7 @@
 - [x] T044 Ejecutar `uv run pytest -v` y corregir los fallos en `src/` y `tests/` sin desactivar pruebas ni usar `# noqa`.
 - [x] T045 Ejecutar `uv run ruff check src/` y corregir todos los hallazgos en `src/` sin `# noqa`, sin desactivar reglas y sin imports relativos.
 - [x] T046 Ejecutar `uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --iterations 20` y anexar a `docs/adr/005-resumen-activos-hexagonal.md` la evidencia del adaptador (tiempo, conteo de consultas y uso de `idx_incidents_component_status`) como causa de la mejora, no como sustituto de SC-001.
-- [x] T047 Recorrer `specs/001-active-incidents-summary/quickstart.md` de la sección 1 a la 7 y corregir en `src/` cualquier desviación de comandos, códigos o salidas; dejar constancia en `docs/adr/005-resumen-activos-hexagonal.md` si alguna comprobación cambia de forma.
+- [x] T047 Recorrer `specs/002-active-incidents-summary/quickstart.md` de la sección 1 a la 7 y corregir en `src/` cualquier desviación de comandos, códigos o salidas; dejar constancia en `docs/adr/005-resumen-activos-hexagonal.md` si alguna comprobación cambia de forma.
 - [x] T048 Crear y ejecutar `tools/benchmark_summary.py` con `--records 10000 --iterations 20`: siembra una base temporal, mide el resumen por HTTP con `TestClient` y por CLI con `CliRunner`, y anexa a `docs/adr/005-resumen-activos-hexagonal.md` los tiempos de extremo a extremo frente a SC-001. El script no forma parte de `pytest` ni hace aserciones de tiempo.
 
 ---

@@ -14,3 +14,5 @@ extend = "../../pyproject.toml"
 "pydantic" = { msg = "El dominio no puede depender de Pydantic." }
 "os" = { msg = "El dominio no puede leer el entorno ni el sistema operativo." }
 "sqlite3" = { msg = "El dominio no puede depender de SQLite." }
+"psycopg" = { msg = "El dominio no puede depender de PostgreSQL ni de drivers de BD." }
+"psycopg2" = { msg = "El dominio no puede depender de PostgreSQL ni de drivers de BD." }

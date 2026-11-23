@@ -10,3 +10,5 @@ extend = "../../pyproject.toml"
 "fastapi" = { msg = "La aplicación no puede depender de FastAPI." }
 "typer" = { msg = "La aplicación no puede depender de Typer." }
 "sqlite3" = { msg = "La aplicación no puede depender de SQLite." }
+"psycopg" = { msg = "La aplicación no puede depender de PostgreSQL ni de drivers de BD." }
+"psycopg2" = { msg = "La aplicación no puede depender de PostgreSQL ni de drivers de BD." }

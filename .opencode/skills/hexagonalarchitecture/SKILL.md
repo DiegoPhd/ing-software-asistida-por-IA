@@ -14,7 +14,7 @@ description: Define y verifica las fronteras de la arquitectura hexagonal de Inc
 - Configuras o ejecutas la validación estática de fronteras con Ruff.
 
 La fuente de verdad es `docs/constitution.md` §2 y `docs/adr/003-arquitectura-hexagonal.md`
-(enmendado por `docs/adr/004-contrato-interfaces-h001.md`). Esta skill es la guía
+(enmendado por `docs/adr/009-contrato-interfaces-h001.md`). Esta skill es la guía
 operativa para aplicar esas reglas.
 
 ## 1. Regla de dependencia

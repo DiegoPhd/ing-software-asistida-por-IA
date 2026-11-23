@@ -1,4 +1,4 @@
-# ADR-004: Contrato único de interfaces para el triaje (H001)
+# ADR-009: Contrato único de interfaces para el triaje (H001)
 
 - **Estado**: Aceptado
 - **Fecha**: 2026-11-22

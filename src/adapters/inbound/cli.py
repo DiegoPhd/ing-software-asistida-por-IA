@@ -1,7 +1,7 @@
-"""Subcomando `triage` del adaptador CLI.
+"""Subcomandos `triage`, `summary`, `create`, `sla` y `health` del adaptador CLI.
 
-Traduce terminal a caso de uso y formatea el resultado como JSON; no clasifica
-ni calcula nada por su cuenta.
+Traduce terminal a caso de uso y formatea el resultado como JSON; no clasifica,
+no calcula SLA, no decide equivalencias ni importa el adaptador HTTP.
 """
 
 import json
@@ -12,21 +12,36 @@ from typing import Optional, Tuple
 
 import typer
 
+from src.adapters.inbound.health_contract import to_health_response
+from src.adapters.inbound.lifecycle_contract import (
+    to_incident_created_response,
+    to_sla_evaluation_response,
+)
 from src.adapters.inbound.problem import build_problem
 from src.adapters.inbound.summary_contract import (
     parse_reference_time,
     to_summary_response,
 )
-from src.adapters.outbound.factory import build_incident_service
+from src.adapters.inbound.temporal_contract import parse_instante_naive
+from src.adapters.outbound.factory import ConfigurationError, build_incident_service
 from src.application.services import (
+    CREATE_CREACION_INVALIDA,
+    CREATE_ERROR_INTERNO,
+    SLA_ERROR_INTERNO,
+    SLA_REFERENCIA_INVALIDA,
     SUMMARY_ERROR_INTERNO,
     DataInconsistencyError,
+    IncidentAlreadyExistsError,
+    IncidentNotFoundError,
     ValidationError,
 )
 
 TRIAGE_FUENTE_TEXTO_INVALIDA = "TRIAGE_FUENTE_TEXTO_INVALIDA"
 TRIAGE_ARCHIVO_INVALIDO = "TRIAGE_ARCHIVO_INVALIDO"
 TRIAGE_ID_CONFLICTO = "TRIAGE_ID_CONFLICTO"
+
+CONFIG_DATABASE_URL_INVALIDA = "CONFIG_DATABASE_URL_INVALIDA"
+HEALTH_ERROR_INTERNO = "HEALTH_ERROR_INTERNO"
 
 app = typer.Typer(
     add_completion=False,
@@ -201,7 +216,7 @@ def summary(
         _emitir_error(exc.code, exc.field, exc.detail)
         raise typer.Exit(2)
     except DataInconsistencyError as exc:
-        _emitir_error(exc.code, exc.field, exc.detail, status=409)
+        _emitir_error(exc.code, exc.field, exc.detail, status=exc.status)
         raise typer.Exit(1)
     except Exception:
         _emitir_error(
@@ -213,6 +228,147 @@ def summary(
         raise typer.Exit(1)
 
     documento = to_summary_response(resumen).model_dump()
+    typer.echo(json.dumps(documento, ensure_ascii=False, indent=2))
+
+
+@app.command("create")
+def create(
+    incident_id: Optional[str] = typer.Option(
+        None,
+        "--incident-id",
+        help="Identificador único del incidente; no vacío y máximo 64 caracteres.",
+    ),
+    raw_text: Optional[str] = typer.Option(
+        None,
+        "--raw-text",
+        help="Texto original del reporte; no vacío y máximo 10 000 caracteres.",
+    ),
+    title: Optional[str] = typer.Option(
+        None,
+        "--title",
+        help="Título opcional; si se omite se deriva de la primera línea del texto.",
+    ),
+    created_at: Optional[str] = typer.Option(
+        None,
+        "--created-at",
+        help="Instante ISO 8601 naive: YYYY-MM-DDTHH:MM:SS[.ffffff].",
+    ),
+) -> None:
+    """Registra un incidente y escribe el documento JSON de alta en stdout."""
+    try:
+        instante = parse_instante_naive(
+            created_at, "created_at", CREATE_CREACION_INVALIDA
+        )
+        resultado = build_incident_service().create_incident(
+            incident_id or "",
+            raw_text or "",
+            title=title,
+            created_at=instante,
+        )
+    except ValidationError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail)
+        raise typer.Exit(2)
+    except IncidentAlreadyExistsError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail, status=409)
+        raise typer.Exit(1)
+    except DataInconsistencyError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail, status=exc.status)
+        raise typer.Exit(1)
+    except Exception:
+        _emitir_error(
+            CREATE_ERROR_INTERNO,
+            "create",
+            "No fue posible registrar el incidente.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    documento = to_incident_created_response(resultado).model_dump(mode="json")
+    typer.echo(json.dumps(documento, ensure_ascii=False, indent=2))
+
+
+@app.command("health")
+def health() -> None:
+    """Comprueba la conectividad real y escribe el documento de salud en stdout.
+
+    Sale 0 si la base responde y 1 si no; la configuración inválida sale 2 con
+    `problem+json` en stderr, sin documento ni traza (FR-003/FR-018).
+    """
+    try:
+        servicio = build_incident_service()
+    except ConfigurationError as exc:
+        _emitir_error(
+            CONFIG_DATABASE_URL_INVALIDA,
+            "DATABASE_URL",
+            str(exc),
+            status=422,
+        )
+        raise typer.Exit(2)
+    except Exception:
+        _emitir_error(
+            HEALTH_ERROR_INTERNO,
+            "health",
+            "No fue posible construir el servicio de salud.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    try:
+        documento = to_health_response(servicio.check_health())
+    except Exception:
+        _emitir_error(
+            HEALTH_ERROR_INTERNO,
+            "health",
+            "No fue posible comprobar la conectividad del servicio.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(json.dumps(documento.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    if documento.status != "ok":
+        raise typer.Exit(1)
+
+
+@app.command("sla")
+def sla(
+    incident_id: Optional[str] = typer.Option(
+        None,
+        "--incident-id",
+        help="Identificador del incidente almacenado; no vacío.",
+    ),
+    reference_time: Optional[str] = typer.Option(
+        None,
+        "--reference-time",
+        help="Instante ISO 8601 naive: YYYY-MM-DDTHH:MM:SS[.ffffff].",
+    ),
+) -> None:
+    """Audita el SLA de un incidente y escribe el documento JSON en stdout."""
+    try:
+        instante = parse_instante_naive(
+            reference_time, "reference_time", SLA_REFERENCIA_INVALIDA
+        )
+        detalle = build_incident_service().evaluate_incident_sla(
+            incident_id or "", instante
+        )
+    except ValidationError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail)
+        raise typer.Exit(2)
+    except IncidentNotFoundError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail, status=404)
+        raise typer.Exit(1)
+    except DataInconsistencyError as exc:
+        _emitir_error(exc.code, exc.field, exc.detail, status=exc.status)
+        raise typer.Exit(1)
+    except Exception:
+        _emitir_error(
+            SLA_ERROR_INTERNO,
+            "sla",
+            "No fue posible auditar el SLA del incidente.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    documento = to_sla_evaluation_response(detalle).model_dump(mode="json")
     typer.echo(json.dumps(documento, ensure_ascii=False, indent=2))
 
 

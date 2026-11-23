@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
 from typer.testing import CliRunner
 
 from src.adapters.inbound.cli import app
+from src.adapters.outbound.sqlite_repository import SQLiteIncidentRepository
 
 TEXTO_P0 = (
     "URGENTE: El gateway de pagos devuelve HTTP 502 Bad Gateway en todas las "
@@ -129,3 +131,167 @@ def test_archivo_inexistente_sale_con_codigo_2(
 
     assert resultado.exit_code == 2
     assert "TRIAGE_ARCHIVO_INVALIDO" in _error(resultado)
+
+
+# ---------------------------------------------------------------------------
+# H003 · Subcomandos `create` y `sla`
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def base_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Archivo SQLite aislado compartido entre invocaciones del comando."""
+    ruta = tmp_path / "cli-h003.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{ruta}")
+    return ruta
+
+
+def _crear(runner_cli: CliRunner, incident_id: str = "INC-1") -> Dict[str, Any]:
+    salida = runner_cli.invoke(
+        app,
+        [
+            "create",
+            "--incident-id",
+            incident_id,
+            "--raw-text",
+            TEXTO_P0,
+            "--created-at",
+            "2026-11-20T10:00:00",
+        ],
+    )
+    assert salida.exit_code == 0, _error(salida)
+    return json.loads(salida.stdout)
+
+
+def test_create_sale_con_cero_y_documento_json(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-012/FR-021: éxito con JSON y los campos del contrato."""
+    cuerpo = _crear(runner_cli)
+
+    assert cuerpo["incident_id"] == "INC-1"
+    assert cuerpo["status"] == "OPEN"
+    assert cuerpo["created_at"] == "2026-11-20T10:00:00"
+    assert cuerpo["is_duplicate"] is False
+    assert cuerpo["duplicate_of"] == []
+
+
+@pytest.mark.parametrize(
+    "created_at", ["2026-11-20 10:00:00", "2026-11-20T10:00:00+00:00"]
+)
+def test_create_con_fecha_invalida_sale_con_2(
+    base_cli: Path, runner_cli: CliRunner, created_at: str
+) -> None:
+    """FR-024: fecha con espacio o con zona es entrada inválida."""
+    salida = runner_cli.invoke(
+        app,
+        [
+            "create",
+            "--incident-id",
+            "INC-1",
+            "--raw-text",
+            TEXTO_P0,
+            "--created-at",
+            created_at,
+        ],
+    )
+
+    assert salida.exit_code == 2
+    assert salida.stdout.strip() == ""
+    assert "CREATE_CREACION_INVALIDA" in _error(salida)
+    assert SQLiteIncidentRepository(str(base_cli)).get_incident("INC-1") is None
+
+
+def test_create_con_identificador_repetido_sale_con_1(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-008: el conflicto no sobrescribe ni imprime un documento parcial."""
+    original = _crear(runner_cli)
+
+    salida = runner_cli.invoke(
+        app,
+        [
+            "create",
+            "--incident-id",
+            "INC-1",
+            "--raw-text",
+            "Otro texto completamente distinto.",
+            "--created-at",
+            "2026-11-20T11:00:00",
+        ],
+    )
+
+    assert salida.exit_code == 1
+    assert salida.stdout.strip() == ""
+    assert "CREATE_ID_CONFLICTO" in _error(salida)
+    persistido = SQLiteIncidentRepository(str(base_cli)).get_incident("INC-1")
+    assert persistido is not None
+    assert persistido.raw_text == TEXTO_P0
+    assert persistido.created_at.isoformat() == original["created_at"]
+
+
+def test_sla_sale_con_cero_y_documento_json(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-018: la auditoría por consola informa contexto y ventana."""
+    _crear(runner_cli)
+
+    salida = runner_cli.invoke(
+        app,
+        [
+            "sla",
+            "--incident-id",
+            "INC-1",
+            "--reference-time",
+            "2026-11-20T10:45:00",
+        ],
+    )
+
+    assert salida.exit_code == 0
+    cuerpo = json.loads(salida.stdout)
+    assert cuerpo["elapsed_minutes"] == 45
+    assert cuerpo["window"] == "24x7"
+
+
+def test_sla_con_identificador_vacio_sale_con_2(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-017: el identificador vacío reserva `SLA_ID_VACIO` para la consola."""
+    salida = runner_cli.invoke(app, ["sla", "--incident-id", "   "])
+
+    assert salida.exit_code == 2
+    assert salida.stdout.strip() == ""
+    assert "SLA_ID_VACIO" in _error(salida)
+
+
+def test_sla_inexistente_sale_con_1(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-023: un incidente inexistente es salida 1 sin documento parcial."""
+    salida = runner_cli.invoke(app, ["sla", "--incident-id", "INC-404"])
+
+    assert salida.exit_code == 1
+    assert salida.stdout.strip() == ""
+    assert "SLA_INCIDENTE_NO_ENCONTRADO" in _error(salida)
+
+
+def test_sla_con_fecha_invalida_sale_con_2(
+    base_cli: Path, runner_cli: CliRunner
+) -> None:
+    """FR-024: una referencia ilegible es entrada inválida con salida 2."""
+    _crear(runner_cli)
+
+    salida = runner_cli.invoke(
+        app,
+        [
+            "sla",
+            "--incident-id",
+            "INC-1",
+            "--reference-time",
+            "2026-11-20 10:00:00",
+        ],
+    )
+
+    assert salida.exit_code == 2
+    assert salida.stdout.strip() == ""
+    assert "SLA_REFERENCIA_INVALIDA" in _error(salida)

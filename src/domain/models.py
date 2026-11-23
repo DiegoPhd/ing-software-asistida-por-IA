@@ -19,16 +19,24 @@ __all__ = [
     "Incident",
     "IncidentStatus",
     "InvalidIncidentError",
+    "MAX_TITULO",
     "SEVERITY_INDEX",
+    "SLAComputationWindow",
     "SLAEvaluation",
+    "SLAEvaluationDetail",
     "SLARule",
     "SeverityLevel",
     "TERMINAL_STATUSES",
     "Team",
     "TemporalInconsistencyError",
+    "derivar_titulo",
 ]
 
 IncidentStatus = Literal["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
+
+SLAComputationWindow = Literal["24x7", "BUSINESS_HOURS"]
+
+MAX_TITULO = 200
 
 ACTIVE_STATUSES: Tuple[IncidentStatus, ...] = ("OPEN", "IN_PROGRESS")
 TERMINAL_STATUSES: Tuple[IncidentStatus, ...] = ("RESOLVED", "CLOSED")
@@ -72,6 +80,8 @@ class Incident:
     created_at: datetime
     resolved_at: Optional[datetime] = None
     raw_text: Optional[str] = None
+    recommended_team: Optional[Team] = None
+    duplicate_group_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +95,16 @@ class SLAEvaluation:
     remaining_minutes: int
     is_breached: bool
     requires_escalation: bool
+
+
+@dataclass(frozen=True)
+class SLAEvaluationDetail:
+    """Auditoría de SLA con su contexto temporal y su ventana de cómputo."""
+
+    incident: Incident
+    evaluation: SLAEvaluation
+    reference_time: datetime
+    window: SLAComputationWindow
 
 
 @dataclass(frozen=True)
@@ -102,3 +122,19 @@ class ActiveIncidentsSummary:
     total_active: int
     breached_count: int
     incidents: Tuple[ActiveIncidentDetail, ...]
+
+
+def derivar_titulo(raw_text: str) -> str:
+    """Deriva el título de un reporte: primera línea recortada, máximo 200.
+
+    Es determinista y no depende de reloj ni de estado: la primera línea no
+    vacía del texto recortado actúa como título y, si el reporte empieza con
+    líneas en blanco, se usa el texto completo recortado. El resultado nunca
+    supera `MAX_TITULO` caracteres.
+    """
+    texto = (raw_text or "").strip()
+    if not texto:
+        return ""
+    primera_linea = texto.splitlines()[0].strip()
+    base = primera_linea or texto
+    return base[:MAX_TITULO]

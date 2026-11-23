@@ -12,10 +12,14 @@ from typing import Mapping, Sequence, Tuple
 from src.domain.models import (
     ACTIVE_STATUSES,
     SEVERITY_INDEX,
+    TERMINAL_STATUSES,
     ActiveIncidentDetail,
     ActiveIncidentsSummary,
     Incident,
+    InvalidIncidentError,
+    SLAComputationWindow,
     SLAEvaluation,
+    SLAEvaluationDetail,
     SLARule,
     SeverityLevel,
     TemporalInconsistencyError,
@@ -35,12 +39,75 @@ HORARIO_INICIO = time(8, 0)
 HORARIO_FIN = time(18, 0)
 
 
-def _validar_naive(instante: datetime, campo: str) -> None:
-    """Rechaza fechas con zona horaria: el dominio solo admite instantes naive."""
+def validar_instante_naive(instante: datetime, campo: str) -> None:
+    """Rechaza fechas con zona horaria: el dominio solo admite instantes naive.
+
+    Es la normalización temporal única que comparten el resumen, la auditoría
+    puntual y el alta. Un valor aware no se convierte: se rechaza.
+    """
     if instante.tzinfo is not None and instante.tzinfo.utcoffset(instante) is not None:
         raise TemporalInconsistencyError(
             f"El campo {campo} debe ser una fecha naive sin zona horaria."
         )
+
+
+def resolver_ventana_temporal(
+    incident: Incident, reference_time: datetime
+) -> Tuple[datetime, datetime, SLAComputationWindow]:
+    """Resuelve el fin del cómputo y la ventana aplicable a un incidente.
+
+    Centraliza las reglas temporales de H003: los tres instantes deben ser
+    naive, `reference_time` nunca puede preceder a la creación —tampoco en
+    terminales—, un terminal exige `resolved_at` coherente y la ventana se
+    deriva de la política vigente, nunca del adaptador.
+
+    Returns:
+        La terna `(created_at, end_time, window)` con el fin del cómputo ya
+        congelado en `resolved_at` cuando existe.
+    """
+    validar_instante_naive(incident.created_at, "created_at")
+    validar_instante_naive(reference_time, "reference_time")
+    if incident.resolved_at is not None:
+        validar_instante_naive(incident.resolved_at, "resolved_at")
+
+    try:
+        rule = get_sla_rule_for_severity(incident.severity)
+    except TemporalInconsistencyError as exc:
+        raise InvalidIncidentError(str(exc)) from exc
+
+    if incident.status in TERMINAL_STATUSES and incident.resolved_at is None:
+        raise InvalidIncidentError(
+            f"El incidente {incident.incident_id} está en estado terminal "
+            "y no registra resolved_at."
+        )
+    if incident.resolved_at is not None and incident.resolved_at < incident.created_at:
+        raise InvalidIncidentError(
+            f"El instante de resolución del incidente {incident.incident_id} "
+            "es anterior al de creación."
+        )
+    if reference_time < incident.created_at:
+        raise TemporalInconsistencyError(
+            f"El instante de referencia {reference_time.isoformat()} es anterior a la "
+            f"creación del incidente {incident.incident_id} "
+            f"({incident.created_at.isoformat()})."
+        )
+
+    window: SLAComputationWindow = "24x7" if rule.operates_24x7 else "BUSINESS_HOURS"
+    return incident.created_at, incident.resolved_at or reference_time, window
+
+
+def evaluate_sla_detail(
+    incident: Incident, reference_time: datetime
+) -> SLAEvaluationDetail:
+    """Evalúa el SLA y adjunta el contexto exigido por la auditoría (FR-018)."""
+    _, _, window = resolver_ventana_temporal(incident, reference_time)
+    evaluation = evaluate_sla_status(incident, reference_time)
+    return SLAEvaluationDetail(
+        incident=incident,
+        evaluation=evaluation,
+        reference_time=reference_time,
+        window=window,
+    )
 
 
 def get_sla_rule_for_severity(severity: SeverityLevel) -> SLARule:
@@ -83,10 +150,10 @@ def evaluate_sla_status(incident: Incident, reference_time: datetime) -> SLAEval
     Returns:
         La evaluación con minutos transcurridos, restantes y banderas de estado.
     """
-    _validar_naive(incident.created_at, "created_at")
-    _validar_naive(reference_time, "reference_time")
+    validar_instante_naive(incident.created_at, "created_at")
+    validar_instante_naive(reference_time, "reference_time")
     if incident.resolved_at is not None:
-        _validar_naive(incident.resolved_at, "resolved_at")
+        validar_instante_naive(incident.resolved_at, "resolved_at")
 
     rule = get_sla_rule_for_severity(incident.severity)
     end_time = incident.resolved_at or reference_time
@@ -141,11 +208,11 @@ def summarize_active_incidents(
     completa (FR-019); los estados terminales se excluyen aunque su SLA esté
     vencido (FR-002).
     """
-    _validar_naive(reference_time, "reference_time")
+    validar_instante_naive(reference_time, "reference_time")
 
     detalles = []
     for incident in incidents:
-        _validar_naive(incident.created_at, "created_at")
+        validar_instante_naive(incident.created_at, "created_at")
         if incident.created_at > reference_time:
             raise TemporalInconsistencyError(
                 f"El incidente {incident.incident_id} fue creado después del instante "
