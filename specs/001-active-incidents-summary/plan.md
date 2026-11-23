@@ -26,27 +26,29 @@ Este hito es exactamente el refactor de Fase 2 previsto: la deuda deliberada de 
 
 **Tipo de proyecto**: aplicación única Python con dos adaptadores de entrada y uno de salida.
 
-**Objetivos de rendimiento**: resumen de 10.000 incidentes en menos de 1 s; una sola consulta SQL por resumen, sin N+1; consulta filtrada resuelta por el índice compuesto.
+**Objetivos de rendimiento**: resumen de 10.000 incidentes activos en menos de 1 s; una sola consulta SQL por resumen, sin N+1; consulta filtrada resuelta por el índice compuesto.
 
 **Restricciones**: fechas naive consistentes; `reference_time` opcional en ISO 8601 sin zona; DTOs de transporte mapeados en el borde; sin reglas de negocio en aplicación ni adaptadores; Ruff obligatorio (`E4`, `E7`, `E9`, `F`, `TID`).
 
-**Escala / Alcance**: 10.000 incidentes almacenados; cuatro severidades; dos estados activos; una capacidad nueva con dos interfaces.
+**Escala / Alcance**: 10.000 incidentes activos almacenados; cuatro severidades; dos estados activos; una capacidad nueva con dos interfaces.
 
 ## Verificación de la Constitución
 
 *PUERTA: debe pasar antes de la Fase 0. Reevaluada tras el diseño de la Fase 1.
-La fila IV se aprueba con la enmienda MINOR 1.1.0 (ADR-005, T039); hasta su
-ratificación el plan queda BLOQUEADO y no se inicia la Fase 0.*
+La fila IV se aprueba con la enmienda MINOR 1.1.0, ya ratificada en
+`docs/constitution.md` y `.specify/memory/constitution.md` (T039 completada); el
+plan queda DESBLOQUEADO. ADR-005 (T038) se redacta en el mismo PR y no bloquea la
+Fase 0.*
 
 | Principio | Estado | Evidencia o acción requerida |
 |---|---|---|
-| I. Núcleo determinista único | PASS | `Incident`, `IncidentStatus`, `SLARule`, `SLAEvaluation` y `evaluate_sla_status` pasan a `src/domain/models.py` y `src/domain/sla_calculator.py`. Se eliminan `src/models.py` y `src/sla_calculator.py`; no quedan tipos duplicados. |
+| I. Núcleo determinista único | PASS | `Incident`, `IncidentStatus`, `SLARule`, `SLAEvaluation` y `evaluate_sla_status` pasan a `src/domain/models.py` y `src/domain/sla_calculator.py`; `SeverityLevel` y `Team` se reexportan desde `src/domain/models.py`. Se eliminan `src/models.py` y `src/sla_calculator.py`; no quedan tipos duplicados. |
 | II. Dominio puro y auditable | PASS | El dominio nuevo solo usa `dataclasses`, `datetime`, `typing` y `math`; sin reloj implícito, sin E/S, sin `print`. El `main()` de demostración del SLA sale del dominio y se retira con el legado. |
 | III. Arquitectura hexagonal estricta | PASS | Dependencia `adapters → application → domain`. El identificador `component` viaja como texto plano hasta el puerto; el adaptador SQLite reconstruye entidades; los DTOs de FastAPI/Pydantic viven solo en `inbound`. |
 | IV. Puertos explícitos y composición única | PASS (enmienda 1.1.0) | Se define solo `IncidentRepositoryPort` y la raíz de composición se mueve a `src/adapters/outbound/factory.py`; la enmienda MINOR 1.1.0 (ADR-005, T039) ratifica ambos cambios. Ver Seguimiento de Complejidad. |
 | V. Stack gobernado | PASS | Sin dependencias nuevas; `sqlite3` estándar y Ruff ya declarado. |
-| VI. Fronteras verificadas con Ruff | PASS | `[tool.ruff.lint]` raíz y `src/domain/ruff.toml`, `src/application/ruff.toml`, `src/adapters/inbound/ruff.toml` con `extend` y `TID251`/`TID252`. |
-| VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_002_summary.py` con escenarios Dado/Cuando/Entonces, paridad REST/CLI, fronteras de SLA y verificación de cumplimiento del puerto. |
+| VI. Fronteras verificadas con Ruff | PASS | `[tool.ruff.lint]` raíz y `src/domain/ruff.toml`, `src/application/ruff.toml`, `src/adapters/inbound/ruff.toml` con `extend` y `TID251`/`TID252`; el dominio prohíbe además `pydantic` y `os`. |
+| VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_002_summary.py` con escenarios Dado/Cuando/Entonces y paridad REST/CLI; `tests/domain/test_sla_calculator.py` con las fronteras de SLA; `tests/adapters/test_sqlite_repository.py` con el cumplimiento del puerto, el conteo de consultas, el plan de índice, la ausencia de escrituras y la equivalencia con un doble del puerto. |
 | Invariantes de SLA | PASS | Se reutilizan sin cambios: P0 60/P1 240 24x7; P2 480/P3 1440 en ventana hábil; incumplimiento estricto; escalamiento al 75 % solo en estados activos. |
 | Deuda deliberada | PASS | El N+1 se elimina porque H002 es el refactor previsto; no se traslada al dominio ni se replica en otros adaptadores. `legacy/triage_rules.py` sigue congelado. |
 | Gobernanza documental | PASS | README, AGENTS.md, ROADMAP y ADR-002 se actualizan en el mismo PR; ADR-005 documenta la topología con Mermaid. |
@@ -83,7 +85,7 @@ specs/001-active-incidents-summary/
 ```text
 src/
 ├── domain/
-│   ├── models.py                    # NUEVO · entidades; el resumen se construye en sla_calculator.py
+│   ├── models.py                    # NUEVO · entidades y resumen; sla_calculator.py los instancia
 │   ├── sla_calculator.py            # NUEVO · política y evaluate_sla_status (migrado de src/sla_calculator.py)
 │   ├── severity.py                  # existente
 │   ├── triage.py                    # existente (H001, sin cambios)
@@ -150,7 +152,7 @@ Puntos contractuales fijados:
 - **HTTP**: `GET /api/v1/incidents/summary?component={componente}&reference_time={ISO-8601}`; `200` con totales en cero e `incidents` vacío cuando no hay coincidencias.
 - **CLI**: `summary [--component ...] [--reference-time ...]`; JSON idéntico por `stdout`; códigos de salida `0` éxito, `2` entrada inválida, `1` error inesperado o dato inconsistente.
 - **Errores estables**: `SUMMARY_COMPONENTE_DEMASIADO_LARGO`, `SUMMARY_REFERENCIA_INVALIDA`, `SUMMARY_SOLICITUD_INVALIDA`, `SUMMARY_REFERENCIA_INCONSISTENTE` y `SUMMARY_ERROR_INTERNO`, reutilizados por ambos canales con `application/problem+json` / `stderr`.
-- **Orden**: severidad `P0`→`P3`, luego minutos transcurridos descendentes, luego `incident_id` ascendente.
+- **Orden**: severidad `P0`→`P3`, luego minutos de SLA descendentes, luego `incident_id` ascendente.
 
 ## Orden de Implementación
 
@@ -188,6 +190,6 @@ Puntos contractuales fijados:
 - `uv run pytest -v` en verde, incluidos H001 y los nuevos escenarios.
 - `uv run ruff check src/` sin errores con `TID251`/`TID252` activos.
 - `uv run pytest tests/test_spec_002_summary.py tests/adapters/test_sqlite_repository.py` demuestra paridad JSON, conteo de una sola consulta y uso del índice.
-- El resumen de 10.000 incidentes se valida con el benchmark del adaptador y con la medición de extremo a extremo HTTP/CLI (`tools/benchmark_summary.py`) dentro del objetivo de `SC-001`.
+- El resumen de 10.000 incidentes activos se valida con el benchmark del adaptador y con la medición de extremo a extremo HTTP/CLI (`tools/benchmark_summary.py`) dentro del objetivo de `SC-001`.
 - No quedan imports ni puntos de entrada al legado retirado; `legacy/triage_rules.py` sigue sin importarse.
 - ADR-005, enmienda de la Constitución y documentación operativa actualizados en el mismo PR.

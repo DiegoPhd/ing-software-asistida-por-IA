@@ -6,7 +6,7 @@ Este documento fija las entidades de dominio, su forma persistida y las reglas q
 
 ## 1 · Entidades de dominio
 
-Todas son `dataclass(frozen=True)` y viven en `src/domain/models.py`, salvo la evaluación y el resumen, que se construyen en `src/domain/sla_calculator.py`.
+Todas son `dataclass(frozen=True)` y se declaran en `src/domain/models.py`; `src/domain/sla_calculator.py` las instancia y produce el resumen, sin redeclararlas.
 
 ### `Incident`
 

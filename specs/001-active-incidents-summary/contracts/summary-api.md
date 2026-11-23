@@ -7,7 +7,7 @@
 | Parámetro | Tipo | Obligatorio | Regla |
 |---|---|---|---|
 | `component` | texto | No | Comparación exacta contra el componente almacenado, ignorando espacios al inicio y al final. Ausente o vacío significa todos. Máximo 128 caracteres |
-| `reference_time` | texto ISO 8601 naive | No | Instante único de evaluación. Formato `YYYY-MM-DDTHH:MM:SS[.ffffff]`, sin zona horaria; se valida con el mismo analizador que la CLI. Si se omite, se usa el instante actual |
+| `reference_time` | texto ISO 8601 naive | No | Instante único de evaluación. Formato `YYYY-MM-DDTHH:MM:SS[.ffffff]`, sin zona horaria y con separador `T` obligatorio (un espacio se rechaza); se valida con el mismo analizador que la CLI. Si se omite, se usa el instante actual |
 
 **Respuesta 200**: documento de [summary.schema.json](./summary.schema.json). Un componente sin coincidencias y la ausencia total de activos también responden `200` con `total_active: 0`, `breached_count: 0` e `incidents: []`.
 

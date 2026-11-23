@@ -77,6 +77,7 @@ curl "http://127.0.0.1:8000/api/v1/incidents/summary?component=no-existe"
 uv run python -m src.adapters.inbound.cli summary
 uv run python -m src.adapters.inbound.cli summary --component payments-gateway
 uv run python -m src.adapters.inbound.cli summary --reference-time 2026-11-20T12:00:00
+# Formato no admitido (espacio en lugar de `T`): debe salir con código 2 y SUMMARY_REFERENCIA_INVALIDA
 uv run python -m src.adapters.inbound.cli summary --reference-time "2026-11-20 12:00:00"
 ```
 
@@ -84,7 +85,7 @@ uv run python -m src.adapters.inbound.cli summary --reference-time "2026-11-20 1
 
 - Salida JSON por `stdout`, misma estructura y valores que la respuesta HTTP para el mismo instante.
 - El resultado vacío sale con código `0` y `incidents` vacío.
-- Fecha mal formada o con zona: código `2`, `stderr` con `SUMMARY_REFERENCIA_INVALIDA` y `stdout` vacío.
+- Fecha mal formada, con zona o con espacio en lugar de `T`: código `2`, `stderr` con `SUMMARY_REFERENCIA_INVALIDA` y `stdout` vacío.
 - `--component` de más de 128 caracteres: código `2` con `SUMMARY_COMPONENTE_DEMASIADO_LARGO`.
 
 ## 5 · Pruebas de la especificación
@@ -92,6 +93,7 @@ uv run python -m src.adapters.inbound.cli summary --reference-time "2026-11-20 1
 ```bash
 uv run pytest tests/test_spec_002_summary.py -v
 uv run pytest tests/domain/test_sla_calculator.py -v
+uv run pytest tests/adapters/test_sqlite_repository.py -v
 ```
 
 Cubre:
@@ -112,13 +114,13 @@ Cubre:
 uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --iterations 20
 ```
 
-**Esperado**: siembra de 10.000 incidentes, resumen filtrado por componente en una sola consulta y tiempo medio dentro del objetivo de `SC-001` (< 1 s). El adaptador informa el plan de consulta; debe mencionar `idx_incidents_component_status` para el filtro por componente.
+**Esperado**: siembra de 10.000 incidentes activos, resumen filtrado por componente en una sola consulta y tiempo medio dentro del objetivo de `SC-001` (< 1 s). El adaptador informa el plan de consulta; debe mencionar `idx_incidents_component_status` para el filtro por componente.
 
 ## 7 · Correspondencia con los criterios de éxito
 
 | Criterio | Cómo se valida |
 |---|---|
-| SC-001 | Benchmark de 10.000 registros |
+| SC-001 | Benchmark de 10.000 incidentes activos |
 | SC-002 | Escenario global con estados mezclados |
 | SC-003 | Comparación estricta HTTP/CLI con el mismo `reference_time` |
 | SC-004 | `breached_count` igual al número de `is_breached` del detalle |

@@ -5,7 +5,7 @@
 | Opción | Tipo | Obligatorio | Regla |
 |---|---|---|---|
 | `--component` | texto | No | Comparación exacta, espacios exteriores ignorados; ausente o vacío significa todos; máximo 128 caracteres |
-| `--reference-time` | ISO 8601 naive | No | Instante único de evaluación, sin zona horaria; si se omite, el instante actual |
+| `--reference-time` | ISO 8601 naive | No | Instante único de evaluación, formato `YYYY-MM-DDTHH:MM:SS[.ffffff]` con separador `T` y sin zona horaria (un espacio se rechaza); si se omite, el instante actual |
 
 Se adopta `--reference-time` (con guion) por consistencia con `--incident-id` y `--raw-text`; el borrador `--referencetime` se descarta.
 

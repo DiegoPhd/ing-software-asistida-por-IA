@@ -1,36 +1,182 @@
 # Constitución de IncidentOps
 
 - **Estado**: Vigente
-- **Versión**: 1.1.0
-- **Fecha**: 2026-11-22
-- **Última enmienda**: 2026-11-22
-- **Ámbito**: todo el repositorio
+- **Ámbito**: todo el repositorio `IncidentOps` (dominio, aplicación, adaptadores,
+  documentación y pruebas)
 - **Precedencia**: Constitución → ADR → código. `AGENTS.md` es guía operativa,
   `ROADMAP.md` define capacidades y `CONTEXT_LOG.md` es bitácora; ninguno puede
   contradecir esta Constitución.
-- **Enmienda**: PR + ADR. Si un ADR entra en conflicto, primero se enmienda la
-  Constitución.
 
----
+## Principios Fundamentales
 
-## 1. Dominio determinista único
-
-### 1.1 Fuente única de verdad
+### I. Núcleo determinista único
 
 `src/domain/` es la única definición de entidades, objetos de valor y reglas de
-negocio: `Incident`, `SLARule`, `SLAEvaluation`, `TriageResult`, `SeverityLevel`,
-`IncidentStatus`, `Team`, cálculo de SLA, triaje y duplicados.
+negocio de IncidentOps, y se organiza en tres módulos canónicos:
 
-- Prohibido redeclarar esos tipos o sus reglas en `application`, `adapters`, DTOs,
-  esquemas Pydantic, SQL o CLI. Los DTOs de transporte se mapean explícitamente en
-  el borde.
-- El dominio es puro: sin `sqlite3`, `json`, `argparse`, `fastapi`, `typer`,
-  `print`/logging, red, sistema de archivos, `datetime.now()` ni `random`.
-- El tiempo de referencia entra como argumento o mediante `ClockPort`. Misma
-  entrada + mismo historial + mismo `reference_time` ⇒ misma salida.
-- Sin estado global mutable ni efectos observables fuera del valor de retorno.
+- `models.py`: `Incident`, `SLARule`, `SLAEvaluation`, `SeverityLevel`,
+  `IncidentStatus` y `Team`.
+- `triage.py`: clasificación por impacto, catálogo de componentes/equipos y
+  detección de duplicados.
+- `sla_calculator.py`: política y cálculo de SLA.
 
-### 1.2 Severidades y SLA
+Ninguna otra capa DEBE redeclarar esos tipos ni sus reglas. DTOs de transporte,
+esquemas Pydantic, filas SQL y modelos de CLI se mapean explícitamente en el borde
+y SÓLO PUEDEN contener lo necesario para el transporte.
+
+Mientras dure la migración, `src/models.py`, `legacy/triage_rules.py` y
+`src/sla_calculator.py` son legado transitorio: NO DEBEN recibir reglas nuevas ni
+convertirse en fuente de verdad alternativa. Cada reto migra su capacidad a
+`src/domain/` y retira el punto de entrada anterior en el mismo PR.
+
+**Razón**: una sola definición elimina la divergencia histórica entre
+`models.py` y `sla_calculator.py` y garantiza que REST, CLI, MCP y persistencia
+evalúen exactamente las mismas reglas.
+
+### II. Dominio puro y auditable
+
+`src/domain/` NO DEBE importar nada fuera de la biblioteca estándar de Python ni
+módulos de `src` ajenos a `src.domain`. En particular, están prohibidos `sqlite3`,
+`json`, `argparse`, `os.environ`, `fastapi`, `typer`, `pydantic`, ORMs, `print`,
+logging, red, sistema de archivos, `datetime.now()` y `random`.
+
+El tiempo de referencia DEBE entrar como argumento explícito o mediante
+`ClockPort`. El dominio NO DEBE mantener estado global mutable ni producir efectos
+observables fuera de su valor de retorno. Misma entrada, mismo historial y mismo
+`reference_time` DEBEN producir la misma salida, byte a byte en los valores
+devueltos.
+
+**Razón**: sin reloj, entorno ni E/S implícitos, las reglas son reproducibles y
+verificables con pruebas unitarias sin infraestructura.
+
+### III. Arquitectura Hexagonal estricta
+
+La dependencia es unidireccional y no negociable:
+`src/adapters/ → src/application/ → src/domain/`.
+
+| Ruta | Responsabilidad |
+|------|-----------------|
+| `src/domain/` | Entidades, valores y reglas puras |
+| `src/application/` | Casos de uso, puertos y transacciones |
+| `src/adapters/inbound/` | REST (FastAPI), CLI (Typer) y futuro MCP |
+| `src/adapters/outbound/` | Persistencia y fuentes de datos; intercambiables |
+| `src/adapters/outbound/factory.py` | Único punto que construye clases concretas y selecciona el repositorio por `DATABASE_URL` |
+
+Reglas obligatorias:
+
+- `src/application/` NO DEBE importar frameworks web, `sqlite3`, SQL ni módulos de
+  `src.adapters`.
+- `src/adapters/` NO DEBE importar otro adaptador concreto para reutilizar lógica;
+  comparte casos de uso, no implementaciones.
+- MCP, cuando exista, DEBE ser un adaptador de entrada sobre los mismos casos de
+  uso. NO PUEDE duplicar reglas ni obligar a modificar el dominio; si requiere una
+  capacidad nueva, se añade un caso de uso.
+- El dominio NO DEBE conocer la existencia de ningún adaptador.
+
+**Razón**: es la decisión de ADR-003, enmendada por ADR-004 en el contrato de
+interfaces (FastAPI y Typer desde H001). Fijar la frontera permite añadir MCP,
+PostgreSQL o contenedores sin reescribir reglas.
+
+### IV. Puertos explícitos y composición única
+
+`src/application/ports.py` DEBE declarar los puertos secundarios con
+`typing.Protocol`, sin herencia obligatoria ni dependencias externas. En H002 el
+puerto vigente es `IncidentRepositoryPort`; `SlaPolicyPort` y `ClockPort` se
+incorporarán cuando un caso de uso los requiera, con implementación y prueba
+reales.
+
+`src/application/services.py` DEBE contener `IncidentService` y los casos de uso
+vigentes en cada hito. En H002: triaje individual y resumen de activos. Triaje por
+lote, registro y reevaluación de SLA quedan en el ROADMAP y DEBEN añadirse como
+casos de uso cuando su hito los requiera. El servicio SÓLO PUEDE secuenciar,
+transaccionar y traducir entre puertos; NO DEBE contener reglas de negocio, SQL ni
+detalles de transporte.
+
+Los adaptadores de salida DEBEN ser intercambiables mediante `DATABASE_URL` sin
+tocar dominio ni casos de uso. SQLite es el valor por defecto; PostgreSQL es el
+destino de H004. Todo el SQL, DDL, siembra de políticas y mapeo fila → entidad
+vive exclusivamente en `src/adapters/outbound/`.
+
+`src/adapters/outbound/factory.py` es el único lugar que instancia clases
+concretas, selecciona el repositorio por `DATABASE_URL` y las inyecta. Ningún
+adaptador DEBE autoconstruir sus dependencias de persistencia.
+
+**Razón**: `typing.Protocol` mantiene el acoplamiento estructural y permite dobles
+en memoria; una raíz de composición única hace que cambiar de motor sea un cambio
+localizado y auditable.
+
+### V. Stack gobernado y dependencias justificadas
+
+- Python >= 3.10 gestionado con `uv`; `[tool.uv] package = false` e imports
+  absolutos (`from src...`) resueltos desde la raíz del repositorio.
+- REST: FastAPI + Pydantic v2. CLI: Typer. Servidor: Uvicorn.
+- Persistencia: `sqlite3` de la biblioteca estándar, sin ORMs pesados, conforme a
+  ADR-001. Cualquier otro motor DEBE tener un ADR específico aprobado antes de
+  introducir la dependencia; H004 (PostgreSQL dedicado) es su caso previsto.
+- La biblioteca estándar es la opción por defecto. Una dependencia nueva DEBE
+  justificarse en el PR indicando qué problema resuelve y por qué no basta la
+  estándar.
+- Las versiones de Python y de las dependencias se fijan en `pyproject.toml` y
+  `uv.lock`; no se instalan paquetes fuera de `uv`.
+
+**Razón**: un stack pequeño y explícito mantiene el repositorio reproducible y
+evita que el framework o el ORM se conviertan en el centro del sistema.
+
+### VI. Fronteras verificadas estáticamente con Ruff
+
+La verificación estática de fronteras es obligatoria y ejecutable:
+
+```bash
+uv run ruff check src/
+```
+
+El comando DEBE terminar sin errores antes de integrar. La configuración vive en
+`pyproject.toml` (`[tool.ruff]` y `[tool.ruff.lint]`) y DEBE incluir reglas que
+detecten, como mínimo:
+
+1. Importaciones prohibidas en `src/domain/` (frameworks, persistencia, CLI,
+   `pydantic`, `os.environ`).
+2. Importaciones de `src.adapters` dentro de `src/application/`.
+3. Importaciones de `src.adapters.outbound` o `src.adapters.inbound` concretos
+   entre adaptadores cuando exista un puerto o caso de uso equivalente.
+
+Desactivar una regla de frontera exige justificación en el PR y, si cambia la
+topología, un ADR. La revisión manual sigue siendo obligatoria: Ruff complementa,
+no sustituye, la regla de dependencia.
+
+**Razón**: `typing.Protocol` no impone nada en tiempo de ejecución; sin una
+verificación automática, la frontera hexagonal depende sólo de disciplina.
+
+### VII. BDD obligatorio y pruebas ejecutables
+
+Cada capacidad DEBE especificarse en español con escenarios `Given / When / Then`
+y automatizarse con `pytest`. La verificación obligatoria es:
+
+```bash
+uv run pytest -v
+```
+
+Reglas:
+
+- Las pruebas de aceptación atraviesan el adaptador de entrada o el caso de uso
+  con dobles en memoria de los puertos.
+- Las reglas de dominio tienen pruebas unitarias table-driven que cubren los
+  límites exactos de las tablas de SLA y triaje.
+- El tiempo es fijo e inyectado; NO se permite `sleep`, red, base de datos real ni
+  `datetime.now()` en pruebas de dominio.
+- Toda capacidad nueva o modificada DEBE traer sus escenarios; una capacidad sin
+  pruebas ejecutadas y en verde NO se considera terminada.
+- Los escenarios BDD son el contrato de aceptación: si el código y el escenario
+  discrepan, se corrige el código o se enmienda el escenario con justificación,
+  nunca se silencia la prueba.
+
+**Razón**: el comportamiento operativo de IncidentOps (clasificación, SLA,
+duplicados) es exactamente lo que se degrada en silencio; los escenarios
+ejecutables son la única evidencia de que las interfaces comparten semántica.
+
+## Restricciones Adicionales
+
+### Invariantes de SLA
 
 | Severidad | Minutos permitidos | Ventana | Escalamiento (75 %) |
 |-----------|-------------------:|---------|--------------------:|
@@ -39,20 +185,20 @@ negocio: `Incident`, `SLARule`, `SLAEvaluation`, `TriageResult`, `SeverityLevel`
 | P2        | 480                | L-V 08:00-18:00 | 360        |
 | P3        | 1440               | L-V 08:00-18:00 | 1080       |
 
-- P2 y P3 solo acumulan minutos dentro de la ventana hábil de lunes a viernes,
+- P2 y P3 SÓLO acumulan minutos dentro de la ventana hábil de lunes a viernes,
   08:00-18:00. Sábados, domingos y horas fuera de ventana no acumulan.
 - Los días festivos no se contabilizan todavía: es deuda explícita (`TODO`) y
   exige un ADR y un puerto de calendario antes de implementarse.
 - `elapsed_minutes` se trunca a minutos enteros.
-- Incumplimiento estricto: `elapsed_minutes > allowed_minutes`. En el límite exacto
-  no hay incumplimiento.
+- Incumplimiento estricto: `elapsed_minutes > allowed_minutes`; en el límite
+  exacto no hay incumplimiento.
 - Escalamiento: `status` activo, sin incumplimiento y
   `elapsed_minutes >= int(allowed_minutes * 0.75)`.
 - `end_time = resolved_at or reference_time`. Si `reference_time < created_at`, es
   un error de dominio.
-- Las fechas son naive consistentes; no se mezclan `datetime` aware y naive.
+- Las fechas son naive consistentes; NO se mezclan `datetime` aware y naive.
 
-### 1.3 Estados del incidente
+### Estados del incidente
 
 Estados canónicos: `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`.
 
@@ -63,7 +209,7 @@ Estados canónicos: `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`.
 - `INVESTIGATING` queda fuera del modelo; `IN_PROGRESS` es el único estado de
   trabajo en curso.
 
-### 1.4 Triaje
+### Triaje, lote y duplicados
 
 El triaje se basa en impacto real, nunca en palabras emocionales como "urgente" o
 "hoy". La precedencia es P0 → P1 → P2 → P3; si ninguna regla aplica, el valor por
@@ -76,23 +222,17 @@ defecto es P2.
 | P2 | Lentitud medible, cuenta bloqueada, degradación acotada |
 | P3 | Cosmética, staging, sin impacto operativo |
 
-La tabla exhaustiva de palabras y componentes es responsabilidad exclusiva de
-`src/domain/`; cambiarla exige pruebas de aceptación. Ninguna capa externa puede
-reimplementarla.
+- El lote se procesa en orden ascendente de `created_at`; ante empate, por
+  `incident_id` ascendente. El primero es el original.
+- Duplicados: similitud `SequenceMatcher` sobre texto en minúsculas >= 0.75 dentro
+  de la ventana de la severidad (P0 1 día, P1 2 días, P2 3 días, P3 4 días). Sólo
+  cuentan candidatos con `0 <= created_at - prev_created_at <= ventana`.
+- `duplicate_group_key` es el `incident_id` del original más antiguo, nunca el de
+  otro duplicado; si el candidato ya es duplicado, se hereda su clave.
+- La tabla exhaustiva de palabras y componentes es responsabilidad exclusiva de
+  `src/domain/` y cambiarla exige pruebas de aceptación.
 
-**Lote y original:** el lote se procesa en orden ascendente de `created_at`; ante
-empate, por `incident_id` ascendente. El primero es el original.
-
-**Duplicados:** similitud `SequenceMatcher` sobre texto en minúsculas ≥ 0.75,
-dentro de la ventana de la severidad: P0 1 día, P1 2 días, P2 3 días, P3 4 días.
-Solo cuentan candidatos con `0 <= created_at - prev_created_at <= ventana`.
-`duplicate_group_key` es siempre el `incident_id` del original más antiguo, nunca
-el de otro duplicado; si el candidato ya es duplicado, se hereda su clave.
-
-### 1.5 Equipos válidos
-
-El catálogo de equipos es cerrado y vive en el dominio. Añadir o retirar un equipo
-exige ADR y pruebas de aceptación.
+### Catálogo cerrado de equipos
 
 | Componente | Equipo |
 |------------|--------|
@@ -104,105 +244,81 @@ exige ADR y pruebas de aceptación.
 | `reporting-api` | `otros` |
 
 `otros` es el único valor de reserva; no es un equipo con guardia ni una vía para
-evadir el catálogo.
+evadir el catálogo. Añadir o retirar un equipo exige ADR y pruebas de aceptación.
 
----
+### Deuda deliberada
 
-## 2. Arquitectura Hexagonal (ADR-003)
+- `IncidentRepository.get_active_incidents_summary` mantiene `SELECT *`, filtrado
+  en Python y N+1 por decisión pedagógica. Esa deuda SÓLO PUEDE vivir en el
+  adaptador de persistencia y NO DEBE replicarse en otros adaptadores ni
+  trasladarse al dominio.
+- `legacy/triage_rules.py` es una copia histórica congelada: NO DEBE importarse ni
+  tratarse como fuente de verdad.
+- `CONTEXT_LOG.md` es la bitácora calificada de ingeniería de prompts: NO DEBE
+  reescribirse como relleno ni regenerarse de forma automática.
 
-### 2.1 Capas y regla de dependencia
+## Flujo de Desarrollo y Puertas de Calidad
 
-| Ruta | Responsabilidad |
-|------|-----------------|
-| `src/domain/` | Entidades, valores y reglas puras |
-| `src/application/` | `IncidentService`, casos de uso, puertos y transacciones |
-| `src/adapters/inbound/` | REST, CLI y futuro MCP |
-| `src/adapters/outbound/` | SQLite, PostgreSQL futuro, JSON de muestra |
-| Raíz de composición (`src/adapters/outbound/factory.py`) | Único lugar que conoce clases concretas, selecciona el repositorio por `DATABASE_URL` e inyecta adaptadores |
+Un PR NO se integra si incumple cualquiera de estas condiciones:
 
-La dependencia es unidireccional: `adapters → application → domain`. El dominio no
-importa nada de `src`; la aplicación no importa frameworks ni adaptadores
-concretos.
+1. `uv run ruff check src/` termina sin errores y las reglas de frontera siguen
+   activas.
+2. `uv run pytest -v` pasa completo, incluidos los escenarios BDD de la capacidad
+   tocada.
+3. El dominio no importa frameworks, persistencia, CLI, `pydantic` ni relojes
+   implícitos.
+4. No hay tipos ni reglas de negocio duplicados fuera de `src/domain/`.
+5. REST, CLI y el futuro MCP comparten el mismo caso de uso.
+6. Toda decisión estructural tiene ADR en `docs/adr/` con diagrama Mermaid cuando
+   aclare fronteras; si el ADR contradice esta Constitución, primero se enmienda
+   la Constitución.
+7. La documentación afectada (`AGENTS.md`, `README.md`, `ROADMAP.md`) se actualiza
+   en el mismo PR.
+8. Código, docstrings y documentación se mantienen en español.
 
-### 2.2 Puertos
+Los cambios se desarrollan en ramas `diego.betancourt/reto-N` y se integran por PR
+a `main`. No se dejan dos formas competidoras de invocar una capacidad: al migrar
+un módulo legado se retira o reemplaza su punto de entrada en el mismo PR.
 
-- Los puertos secundarios se declaran con `typing.Protocol`, sin herencia
-  obligatoria. En H002 el puerto vigente es `IncidentRepositoryPort`;
-  `SlaPolicyPort` y `ClockPort` se incorporarán cuando un caso de uso los
-  requiera, con implementación y prueba reales.
-- Los puertos de entrada son los casos de uso que expone `IncidentService`. En
-  H002: triaje individual y resumen de activos. Triaje por lote, registro y
-  reevaluación de SLA quedan en el ROADMAP y se añadirán cuando su hito los
-  requiera.
-- `IncidentService` solo secuencia, transacciona y traduce entre puertos; no
-  contiene reglas de negocio, SQL ni detalles de transporte.
+## Gobernanza
 
-### 2.3 Adaptadores
+Esta Constitución prevalece sobre ADRs, código, `AGENTS.md`, `README.md`,
+`ROADMAP.md` y `CONTEXT_LOG.md`. Si una práctica vigente la contradice, la
+práctica se corrige; no se interpreta la Constitución para acomodarla.
 
-- **Entrada:** REST con FastAPI + Pydantic v2 y CLI con Typer. Ambos validan,
-  traducen y formatean; no clasifican ni calculan SLA.
-- **MCP futuro:** será un adaptador de entrada sobre los mismos casos de uso. No
-  puede duplicar lógica ni obligar a cambiar el dominio; si necesita una capacidad
-  nueva, se añade un caso de uso.
-- **Salida:** SQLite con `sqlite3` estándar, PostgreSQL en H004 y lectura del JSON
-  de muestra. Todo el SQL, DDL, siembra de políticas y mapeo desde filas vive
-  exclusivamente aquí.
-- La deuda deliberada de `get_active_incidents_summary` (`SELECT *`, filtrado en
-  Python y N+1) queda confinada al adaptador SQLite hasta el refactor de Fase 2; no
-  se replica en otros adaptadores ni se traslada al dominio.
+**Procedimiento de enmienda**:
 
-### 2.4 Migración desde el código actual
+1. Abrir un PR con la propuesta y, si cambia una frontera o una decisión
+   estructural, un ADR que la justifique.
+2. Si un ADR en conflicto ya existe, enmendar primero la Constitución y luego
+   ajustar el ADR.
+3. Actualizar el bloque de versión y las fechas; generar el Sync Impact Report
+   temporal y retirarlo antes de fusionar.
+4. Revisión y aprobación por el mantenedor del repositorio. No hay enmiendas por
+   commit directo a `main`.
 
-`src/models.py`, `legacy/triage_rules.py`, `src/sla_calculator.py` y
-`src/incident_repository.py` son legado transitorio. No se añaden reglas nuevas
-allí. Cada reto migra su capacidad al layout hexagonal y retira o reemplaza el
-punto de entrada anterior en el mismo PR, para no dejar dos formas competidoras de
-invocar el sistema. `AGENTS.md` y `README.md` se actualizan en ese mismo cambio.
+**Política de versionado** (semántica `MAJOR.MINOR.PATCH`):
 
----
+- **MAJOR**: eliminación o redefinición incompatible de un principio, sección o
+  invariante de negocio.
+- **MINOR**: principio o sección nueva, o ampliación material de una guía
+  existente.
+- **PATCH**: aclaraciones, correcciones de redacción o refinamientos que no
+  cambian obligaciones.
 
-## 3. Gobernanza técnica y calidad
+**Revisión de cumplimiento**:
 
-### 3.1 Stack
+- Cada PR DEBE declarar cómo cumple las puertas de calidad y adjuntar la evidencia
+  de los comandos ejecutados.
+- La revisión verifica los ocho puntos de "Flujo de Desarrollo y Puertas de
+  Calidad"; una violación bloquea la fusión, no se registra como deuda.
+- Una capacidad nueva no se acepta sin escenarios BDD en verde y sin ADR cuando
+  corresponda.
+- La Constitución se revisa al cerrar cada reto del ROADMAP; si el reto cambió el
+  stack, las fronteras o los invariantes, la revisión termina en enmienda.
 
-- Python >= 3.10 gestionado con `uv`; `[tool.uv] package = false` e imports
-  absolutos resueltos desde la raíz del repositorio.
-- REST: FastAPI + Pydantic v2. CLI: Typer.
-- Persistencia: `sqlite3` de la biblioteca estándar, sin ORMs pesados.
-- Cualquier cambio de motor de base de datos exige su propio ADR previo (H004:
-  PostgreSQL dedicado).
-- La biblioteca estándar es la opción por defecto; una dependencia nueva debe
-  justificarse en el PR.
+**Guía operativa**: `AGENTS.md` describe comandos y convenciones de ejecución;
+esta Constitución describe obligaciones. Ante conflicto, prevalece la
+Constitución.
 
-### 3.2 BDD y pruebas
-
-- Cada capacidad se especifica en español con `Given / When / Then`.
-- Las pruebas de aceptación se automatizan con `pytest` y se ejecutan con
-  `uv run pytest`.
-- Las pruebas de aceptación atraviesan el adaptador de entrada o el caso de uso con
-  dobles en memoria de los puertos; las reglas de dominio tienen pruebas unitarias
-  table-driven.
-- Tiempo fijo e inyectado; sin `sleep`, red ni base de datos real en pruebas de
-  dominio.
-- Como hoy no existe suite, el primer PR que toque una capacidad crea el arnés y no
-  se considera terminado sin sus pruebas ejecutadas.
-
-### 3.3 Puertas de calidad
-
-Un PR no se integra si incumple cualquiera de estas condiciones:
-
-1. El dominio no importa frameworks, persistencia, CLI ni relojes implícitos.
-2. No hay tipos ni reglas de negocio duplicados fuera de `src/domain/`.
-3. REST, CLI y el futuro MCP comparten el mismo caso de uso.
-4. Las pruebas de aceptación y unitarias pasan.
-5. Toda decisión estructural tiene ADR en `docs/adr/` con diagrama Mermaid cuando
-   aclare fronteras.
-6. La documentación afectada (`AGENTS.md`, `README.md`) se actualiza en el mismo
-   PR.
-7. Código, docstrings y documentación se mantienen en español; `CONTEXT_LOG.md` no
-   se reescribe como relleno.
-
-### 3.4 Fuera de alcance
-
-Esta Constitución no fija comandos, tareas archivo por archivo ni fechas. Eso
-corresponde a `AGENTS.md`, `README.md` y `ROADMAP.md`.
+**Version**: 1.1.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22
