@@ -22,7 +22,7 @@
       "component": "payments-gateway",
       "severity": "P0",
       "status": "OPEN",
-      "elapsed_minutes": 46,
+      "elapsed_minutes": 61,
       "is_breached": true,
       "requires_escalation": false
     },

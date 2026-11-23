@@ -43,7 +43,7 @@ Inserta los incidentes con `save_incident` desde una sesión corta de Python, us
 
 | `incident_id` | Componente | Severidad | Estado | `created_at` (para `reference_time=2026-11-20T12:00:00`) |
 |---|---|---|---|---|
-| `INC-2001` | `payments-gateway` | `P0` | `OPEN` | `2026-11-20T11:14:00` → 46 min, incumplido |
+| `INC-2001` | `payments-gateway` | `P0` | `OPEN` | `2026-11-20T10:59:00` → 61 min, incumplido |
 | `INC-2002` | `reporting-api` | `P2` | `IN_PROGRESS` | `2026-11-19T16:00:00` → 360 min hábiles (jueves 16-18 + viernes 08-12), escalamiento |
 | `INC-2003` | `auth-identity` | `P1` | `RESOLVED` | fuera del resumen |
 

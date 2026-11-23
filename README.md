@@ -10,44 +10,69 @@ Este repositorio sirve como banco de pruebas práctico para la **Semana 1** de *
 
 - **Python 3.10+** y **[`uv`](https://docs.astral.sh/uv/)**.
 - Dependencias declaradas en [`pyproject.toml`](pyproject.toml):
-  - `tiktoken`: Para medir con precisión matemática el consumo de tokens BPE (`o200k_base` / `cl100k_base`) en las distintas estrategias de recolección de contexto.
-
-Para inicializar el entorno virtual e instalar las dependencias:
+  - `fastapi` + `pydantic` v2: canal HTTP.
+  - `typer`: canal de consola.
+  - `tiktoken`: medición de tokens BPE (`o200k_base` / `cl100k_base`) en las estrategias de contexto.
 
 ```bash
 uv sync
 ```
 
+Todos los comandos se ejecutan desde la raíz del repositorio con `uv run`.
+
 ---
 
-## Comandos Principales para la Práctica
+## Arquitectura (hexagonal)
 
-Ejecuta todos los comandos desde la raíz del repositorio usando `uv run`:
+```text
+src/
+├── domain/                 # Núcleo puro: sin frameworks, reloj ni E/S
+│   ├── models.py           # Incident, SLARule, SLAEvaluation, resumen, errores
+│   ├── sla_calculator.py   # SLA_POLICY_TABLE, evaluate_sla_status, summarize_active_incidents
+│   ├── severity.py         # catálogo cerrado de severidades, equipos y componentes
+│   └── triage.py           # reglas puras de triaje (H001)
+├── application/
+│   ├── ports.py            # IncidentRepositoryPort (Protocol)
+│   └── services.py         # IncidentService: triaje y resumen
+└── adapters/
+    ├── inbound/            # api/app.py · cli.py · summary_contract.py · problem.py
+    └── outbound/           # sqlite_repository.py · factory.py (raíz de composición)
+```
 
-### 1. Fase 1 — Auditoría de Tokens con `tiktoken`: Fuerza Bruta vs. `grep` vs. LSP
-Compara cuántos tokens reales consume leer todos los archivos del repositorio (`glob` + `read`), leer los archivos `.py` coincidentes (`grep` + `read`) o extraer únicamente la definición, firmas de tipos y referencias de un símbolo como lo hace un servidor **LSP**:
+- Los adaptadores de entrada solo conocen el caso de uso, el contrato de
+  transporte compartido y la fábrica de salida.
+- `src/adapters/outbound/factory.py` es el único punto que instancia clases
+  concretas y selecciona el repositorio por `DATABASE_URL`.
+- Las fronteras se verifican con Ruff (`TID251`/`TID252`) mediante
+  `src/domain/ruff.toml`, `src/application/ruff.toml` y
+  `src/adapters/inbound/ruff.toml`.
+- Decisiones: [ADR-002](docs/adr/002-calculo-sla-horario-habil.md),
+  [ADR-003](docs/adr/003-arquitectura-hexagonal.md),
+  [ADR-004](docs/adr/004-contrato-interfaces-h001.md) y
+  [ADR-005](docs/adr/005-resumen-activos-hexagonal.md).
+
+---
+
+## 1. Auditoría de Tokens con `tiktoken`
+
+Compara cuántos tokens consume leer todo el repositorio, leer los `.py`
+coincidentes o extraer únicamente la definición, firmas y referencias de un
+símbolo (estilo LSP):
 
 ```bash
 uv run python -m src.context_audit --symbol evaluate_sla_status
 uv run python -m src.context_audit --symbol get_active_incidents_summary
-uv run python -m src.context_audit --symbol classify_incident_report
-```
-
-Para comparar el impacto en tokens de distintos formatos de serialización de datos (JSON indentado, JSON compacto, YAML, CSV):
-
-```bash
+uv run python -m src.context_audit --symbol classify_impact
 uv run python -m src.context_audit --compare-formats
 ```
 
-### 2. Fase 2 — Benchmark del Repositorio de Incidentes (10,000 registros)
-Ejecuta el escenario con deuda técnica (escaneo completo en memoria y problema de consultas N+1 sobre 10,000 incidentes en SQLite):
+---
 
-```bash
-uv run python -m src.incident_repository
-```
+## 2. H001 · Triaje por HTTP y CLI
 
-### 3. Hito 001 — Triaje por HTTP y CLI
-El motor de triaje vive en `src/domain/triage.py` y se expone a través de un único caso de uso (`IncidentService.triage_incident`) consumido por dos adaptadores. La operación es stateless: no lee ni escribe base de datos.
+El motor de triaje vive en `src/domain/triage.py` y se expone a través de un
+único caso de uso (`IncidentService.triage_incident`) consumido por dos
+adaptadores. La operación es stateless: no lee ni escribe base de datos.
 
 **CLI (Typer):**
 
@@ -56,8 +81,6 @@ uv run python -m src.adapters.inbound.cli triage --incident-id INC-1001 --raw-te
 uv run python -m src.adapters.inbound.cli triage --incident-id INC-1001 --raw-text -   # lee stdin
 uv run python -m src.adapters.inbound.cli triage --file reporte.json                  # un único objeto
 ```
-
-La salida es un JSON idéntico al de HTTP. Códigos de salida: `0` éxito, `2` entrada inválida, `1` error inesperado.
 
 **HTTP (FastAPI):**
 
@@ -70,21 +93,130 @@ POST /api/v1/incidents/triage
 {"incident_id": "INC-1001", "raw_text": "..."}
 ```
 
-Devuelve `200 OK` con `severity`, `component`, `recommended_team`, `rationale` y `duplicate_group_key` (siempre `null` en H001). Las entradas vacías o con solo espacios responden `422` con `application/problem+json` y un `code` estable.
+Devuelve `200 OK` con `severity`, `component`, `recommended_team`, `rationale` y
+`duplicate_group_key` (siempre `null` en H001). Las entradas inválidas responden
+`422` con `application/problem+json` y un `code` estable.
 
-La especificación completa está en [`docs/specs/h001-triaje-multi-interfaz.md`](docs/specs/h001-triaje-multi-interfaz.md) y las decisiones de frontera en [`docs/adr/004-contrato-interfaces-h001.md`](docs/adr/004-contrato-interfaces-h001.md).
+Códigos de salida de la CLI: `0` éxito, `2` entrada inválida, `1` error
+inesperado.
 
-**Pruebas:**
+---
 
-```bash
-uv run pytest
+## 3. H002 · Resumen de incidentes activos
+
+Expone el mismo caso de uso (`IncidentService.get_active_incidents_summary`) por
+REST y CLI. El dominio calcula minutos de SLA, orden y totales; el adaptador
+SQLite resuelve una sola consulta con `INNER JOIN sla_policies` e índice
+`idx_incidents_component_status (component, status)`.
+
+### Origen de datos
+
+| `DATABASE_URL` | Resultado |
+|---|---|
+| ausente | Base SQLite en memoria, privada por repositorio |
+| `sqlite:///:memory:` | Base SQLite en memoria |
+| `sqlite:///ruta/incidentops.db` | Archivo relativo o absoluto |
+| Otro esquema | Error de configuración; no se intenta abrir |
+
+```powershell
+$env:DATABASE_URL = "sqlite:///resumen-demo.db"
+$env:PYTHONIOENCODING = "utf-8"
 ```
 
-El motor anterior queda archivado en `legacy/triage_rules.py` como evidencia histórica: no es invocable ni fuente de verdad.
-
-### 4. Verificación del Cálculo Determinista de SLA (`src/sla_calculator.py`)
-Ejecuta la demostración del cálculo de SLA actual (donde se evidencia el bug de horario hábil en tickets `P2`/`P3`):
+### CLI
 
 ```bash
-uv run python -m src.sla_calculator
+uv run python -m src.adapters.inbound.cli summary
+uv run python -m src.adapters.inbound.cli summary --component payments-gateway
+uv run python -m src.adapters.inbound.cli summary --reference-time 2026-11-20T12:00:00
 ```
+
+La salida es un JSON por `stdout`, idéntico al del canal HTTP:
+
+```json
+{
+  "total_active": 2,
+  "breached_count": 1,
+  "incidents": [
+    {
+      "incident_id": "INC-2001",
+      "title": "Pasarela de pagos caída",
+      "component": "payments-gateway",
+      "severity": "P0",
+      "status": "OPEN",
+      "elapsed_minutes": 61,
+      "is_breached": true,
+      "requires_escalation": false
+    }
+  ]
+}
+```
+
+### HTTP
+
+```bash
+uv run uvicorn src.adapters.inbound.api.app:app --reload
+```
+
+```
+GET /api/v1/incidents/summary
+GET /api/v1/incidents/summary?component=payments-gateway
+GET /api/v1/incidents/summary?reference_time=2026-11-20T12:00:00
+```
+
+`reference_time` es opcional y usa `YYYY-MM-DDTHH:MM:SS[.ffffff]`, con separador
+`T` y sin zona horaria. Un componente sin coincidencias responde `200` con
+totales en cero.
+
+### Errores estables
+
+| HTTP | CLI | `code` | Causa |
+|---|---|---|---|
+| 422 | 2 | `SUMMARY_SOLICITUD_INVALIDA` | Parámetro desconocido o repetido |
+| 422 | 2 | `SUMMARY_COMPONENTE_DEMASIADO_LARGO` | `component` supera 128 caracteres |
+| 422 | 2 | `SUMMARY_REFERENCIA_INVALIDA` | Fecha con zona, con espacio o no parseable |
+| 409 | 1 | `SUMMARY_REFERENCIA_INCONSISTENTE` | Activo creado después del instante de referencia |
+| 500 | 1 | `SUMMARY_ERROR_INTERNO` | Fallo inesperado sin detalles internos |
+
+Los contratos viven en
+[`specs/001-active-incidents-summary/contracts/`](specs/001-active-incidents-summary/contracts/)
+y la guía de validación en
+[`specs/001-active-incidents-summary/quickstart.md`](specs/001-active-incidents-summary/quickstart.md).
+
+---
+
+## 4. Pruebas, fronteras y rendimiento
+
+```bash
+uv run pytest -v
+uv run ruff check src/
+```
+
+La suite cubre H001 y H002: escenarios BDD de la especificación, fronteras de
+SLA en `tests/domain/test_sla_calculator.py`, cumplimiento del puerto y uso del
+índice en `tests/adapters/test_sqlite_repository.py`, y paridad HTTP/CLI en
+`tests/test_spec_002_summary.py`.
+
+Benchmarks (no forman parte de `pytest` y no hacen aserciones de tiempo):
+
+```bash
+# Resumen filtrado sobre 10.000 activos, con plan de consulta
+uv run python -m src.adapters.outbound.sqlite_repository --records 10000 --iterations 20
+
+# Extremo a extremo por HTTP y CLI
+uv run python tools/benchmark_summary.py --records 10000 --iterations 20
+```
+
+El motor histórico de triaje queda archivado en `legacy/triage_rules.py` como
+evidencia: no se importa, no se modifica y no es fuente de verdad.
+
+---
+
+## 5. Governanza documental
+
+- Constitución técnica: [`docs/constitution.md`](docs/constitution.md) y
+  [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (versión
+  **1.1.0**).
+- Hoja de ruta: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+- ADR: [`docs/adr/`](docs/adr/).
+- Guía operativa para agentes: [`AGENTS.md`](AGENTS.md).

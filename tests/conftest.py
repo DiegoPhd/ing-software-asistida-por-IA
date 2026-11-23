@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from src.adapters.inbound.api.app import create_app
-from src.adapters.inbound.cli import app as cli_app
 
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA_MUESTRA = RAIZ / "data" / "sample_incidents.json"
