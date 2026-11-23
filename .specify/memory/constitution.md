@@ -37,8 +37,9 @@ evalúen exactamente las mismas reglas.
 
 `src/domain/` NO DEBE importar nada fuera de la biblioteca estándar de Python ni
 módulos de `src` ajenos a `src.domain`. En particular, están prohibidos `sqlite3`,
-`json`, `argparse`, `os.environ`, `fastapi`, `typer`, `pydantic`, ORMs, `print`,
-logging, red, sistema de archivos, `datetime.now()` y `random`.
+`psycopg`, `psycopg2`, `json`, `argparse`, `os.environ`, `fastapi`, `typer`,
+`pydantic`, ORMs, `print`, logging, red, sistema de archivos, `datetime.now()` y
+`random`.
 
 El tiempo de referencia DEBE entrar como argumento explícito o mediante
 `ClockPort`. El dominio NO DEBE mantener estado global mutable ni producir efectos
@@ -64,8 +65,8 @@ La dependencia es unidireccional y no negociable:
 
 Reglas obligatorias:
 
-- `src/application/` NO DEBE importar frameworks web, `sqlite3`, SQL ni módulos de
-  `src.adapters`.
+- `src/application/` NO DEBE importar frameworks web, `sqlite3`, `psycopg`,
+  `psycopg2`, SQL ni módulos de `src.adapters`.
 - `src/adapters/` NO DEBE importar otro adaptador concreto para reutilizar lógica;
   comparte casos de uso, no implementaciones.
 - MCP, cuando exista, DEBE ser un adaptador de entrada sobre los mismos casos de
@@ -74,32 +75,33 @@ Reglas obligatorias:
 - El dominio NO DEBE conocer la existencia de ningún adaptador.
 
 **Razón**: es la decisión de ADR-003, enmendada por ADR-004 en el contrato de
-interfaces (FastAPI y Typer desde H001). Fijar la frontera permite añadir MCP,
-PostgreSQL o contenedores sin reescribir reglas.
+interfaces (FastAPI y Typer desde H001) y completada por ADR-007 (persistencia
+dual sin ORM) y ADR-008 (runtime en contenedores). Fijar la frontera permite
+añadir MCP, PostgreSQL o contenedores sin reescribir reglas.
 
 ### IV. Puertos explícitos y composición única
 
 `src/application/ports.py` DEBE declarar los puertos secundarios con
-`typing.Protocol`, sin herencia obligatoria ni dependencias externas. En H002 el
-puerto vigente es `IncidentRepositoryPort`; `SlaPolicyPort` y `ClockPort` se
-incorporarán cuando un caso de uso los requiera, con implementación y prueba
-reales.
+`typing.Protocol`, sin herencia obligatoria ni dependencias externas. En H003 el
+puerto de persistencia es `IncidentRepositoryPort` y `ClockPort` ya cuenta con
+`SystemClock`; `SlaPolicyPort` se incorporará cuando un caso de uso lo requiera,
+con implementación y prueba reales.
 
 `src/application/services.py` DEBE contener `IncidentService` y los casos de uso
-vigentes en cada hito. En H002: triaje individual y resumen de activos. Triaje por
-lote, registro y reevaluación de SLA quedan en el ROADMAP y DEBEN añadirse como
-casos de uso cuando su hito los requiera. El servicio SÓLO PUEDE secuenciar,
-transaccionar y traducir entre puertos; NO DEBE contener reglas de negocio, SQL ni
-detalles de transporte.
+vigentes en cada hito. En H003: triaje individual, resumen de activos, alta
+persistente y auditoría de SLA. El triaje por lote queda en el ROADMAP y DEBE
+añadirse como caso de uso cuando su hito lo requiera. El servicio SÓLO PUEDE
+secuenciar, transaccionar y traducir entre puertos; NO DEBE contener reglas de
+negocio, SQL ni detalles de transporte.
 
 Los adaptadores de salida DEBEN ser intercambiables mediante `DATABASE_URL` sin
-tocar dominio ni casos de uso. SQLite es el valor por defecto; PostgreSQL es el
-destino de H004. Todo el SQL, DDL, siembra de políticas y mapeo fila → entidad
-vive exclusivamente en `src/adapters/outbound/`.
-
-`src/adapters/outbound/factory.py` es el único lugar que instancia clases
-concretas, selecciona el repositorio por `DATABASE_URL` y las inyecta. Ningún
-adaptador DEBE autoconstruir sus dependencias de persistencia.
+tocar dominio ni casos de uso. SQLite es el valor por defecto; PostgreSQL es un
+motor aprobado por ADR-007 para H004. `src/adapters/outbound/factory.py` es el único
+lugar que interpreta el DSN (`sqlite:///:memory:`, `sqlite:///ruta` o
+`postgresql://`), instancia la clase concreta y la inyecta; ningún adaptador DEBE
+autoconstruir sus dependencias de persistencia. Todo el SQL, DDL, siembra de
+políticas y mapeo fila → entidad vive exclusivamente en
+`src/adapters/outbound/`.
 
 **Razón**: `typing.Protocol` mantiene el acoplamiento estructural y permite dobles
 en memoria; una raíz de composición única hace que cambiar de motor sea un cambio
@@ -110,9 +112,15 @@ localizado y auditable.
 - Python >= 3.10 gestionado con `uv`; `[tool.uv] package = false` e imports
   absolutos (`from src...`) resueltos desde la raíz del repositorio.
 - REST: FastAPI + Pydantic v2. CLI: Typer. Servidor: Uvicorn.
-- Persistencia: `sqlite3` de la biblioteca estándar, sin ORMs pesados, conforme a
-  ADR-001. Cualquier otro motor DEBE tener un ADR específico aprobado antes de
-  introducir la dependencia; H004 (PostgreSQL dedicado) es su caso previsto.
+- Persistencia: `sqlite3` de la biblioteca estándar como motor por defecto y
+  `psycopg[binary]` para PostgreSQL, ambos sin ORM, conforme a ADR-001
+  (parcialmente reemplazado por ADR-007). La selección se resuelve exclusivamente
+  por `DATABASE_URL`; cualquier motor adicional DEBE tener un ADR aprobado antes
+  de introducir su dependencia.
+- Runtime: topología de referencia multi-contenedor con Docker Compose (`api` y
+  `db: postgres:16-alpine`), conforme a ADR-008. La imagen de la API no contiene
+  credenciales ni estado persistente; la base usa un volumen nombrado y un
+  healthcheck real.
 - La biblioteca estándar es la opción por defecto. Una dependencia nueva DEBE
   justificarse en el PR indicando qué problema resuelve y por qué no basta la
   estándar.
@@ -246,12 +254,29 @@ defecto es P2.
 `otros` es el único valor de reserva; no es un equipo con guardia ni una vía para
 evadir el catálogo. Añadir o retirar un equipo exige ADR y pruebas de aceptación.
 
+### Contrato de persistencia entre motores
+
+- Ambos motores DEBEN implementar el mismo `IncidentRepositoryPort` y compartir
+  la semántica de errores y de escritura; ningún adaptador DEBE calcular SLA,
+  similitud, claves de duplicado ni ordenar resultados.
+- `created_at` y `resolved_at` se persisten como texto ISO 8601 naive normalizado
+  a microsegundos (`YYYY-MM-DDTHH:MM:SS.ffffff`) en ambos motores. NO se usan
+  `TIMESTAMP`, `TIMESTAMPTZ`, épocas numéricas ni zonas horarias del servidor.
+- La ruta de alta usa `INSERT` estricto; `REPLACE`, `UPSERT` y
+  `ON CONFLICT DO UPDATE` están prohibidos. La violación de unicidad se traduce al
+  mismo error de aplicación en ambos motores.
+- El DDL y los índices son idempotentes y equivalentes por motor; las consultas
+  nuevas usan columnas explícitas y su plan se verifica con el motor real.
+- El cerrojo por componente es de proceso. La topología de referencia mantiene una
+  sola réplica de la API; escalar a varias réplicas exige un ADR de bloqueo
+  distribuido.
+- Un ORM o una herramienta de migración automática DEBE justificarse en un ADR.
+
 ### Deuda deliberada
 
-- `IncidentRepository.get_active_incidents_summary` mantiene `SELECT *`, filtrado
-  en Python y N+1 por decisión pedagógica. Esa deuda SÓLO PUEDE vivir en el
-  adaptador de persistencia y NO DEBE replicarse en otros adaptadores ni
-  trasladarse al dominio.
+- La deuda pedagógica de la Semana 1 (`SELECT *`, filtrado en Python y N+1 en
+  `get_active_incidents_summary`) quedó retirada en H002. NO DEBE reintroducirse
+  en los adaptadores ni replicarse en el dominio.
 - `legacy/triage_rules.py` es una copia histórica congelada: NO DEBE importarse ni
   tratarse como fuente de verdad.
 - `CONTEXT_LOG.md` es la bitácora calificada de ingeniería de prompts: NO DEBE
@@ -321,4 +346,4 @@ práctica se corrige; no se interpreta la Constitución para acomodarla.
 esta Constitución describe obligaciones. Ante conflicto, prevalece la
 Constitución.
 
-**Version**: 1.1.1 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22
+**Version**: 1.2.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-23
