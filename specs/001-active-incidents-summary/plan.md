@@ -34,14 +34,16 @@ Este hito es exactamente el refactor de Fase 2 previsto: la deuda deliberada de 
 
 ## Verificación de la Constitución
 
-*PUERTA: debe pasar antes de la Fase 0. Reevaluada tras el diseño de la Fase 1.*
+*PUERTA: debe pasar antes de la Fase 0. Reevaluada tras el diseño de la Fase 1.
+La fila IV se aprueba con la enmienda MINOR 1.1.0 (ADR-005, T039); hasta su
+ratificación el plan queda BLOQUEADO y no se inicia la Fase 0.*
 
 | Principio | Estado | Evidencia o acción requerida |
 |---|---|---|
 | I. Núcleo determinista único | PASS | `Incident`, `IncidentStatus`, `SLARule`, `SLAEvaluation` y `evaluate_sla_status` pasan a `src/domain/models.py` y `src/domain/sla_calculator.py`. Se eliminan `src/models.py` y `src/sla_calculator.py`; no quedan tipos duplicados. |
 | II. Dominio puro y auditable | PASS | El dominio nuevo solo usa `dataclasses`, `datetime`, `typing` y `math`; sin reloj implícito, sin E/S, sin `print`. El `main()` de demostración del SLA sale del dominio y se retira con el legado. |
 | III. Arquitectura hexagonal estricta | PASS | Dependencia `adapters → application → domain`. El identificador `component` viaja como texto plano hasta el puerto; el adaptador SQLite reconstruye entidades; los DTOs de FastAPI/Pydantic viven solo en `inbound`. |
-| IV. Puertos explícitos y composición única | PARCIAL | Se define solo `IncidentRepositoryPort` (decisión del hito) y la raíz de composición se mueve a `src/adapters/outbound/factory.py`. Requiere ADR-005 y enmienda PATCH de la Constitución (§III/§IV) en el mismo PR. Ver Seguimiento de Complejidad. |
+| IV. Puertos explícitos y composición única | PASS (enmienda 1.1.0) | Se define solo `IncidentRepositoryPort` y la raíz de composición se mueve a `src/adapters/outbound/factory.py`; la enmienda MINOR 1.1.0 (ADR-005, T039) ratifica ambos cambios. Ver Seguimiento de Complejidad. |
 | V. Stack gobernado | PASS | Sin dependencias nuevas; `sqlite3` estándar y Ruff ya declarado. |
 | VI. Fronteras verificadas con Ruff | PASS | `[tool.ruff.lint]` raíz y `src/domain/ruff.toml`, `src/application/ruff.toml`, `src/adapters/inbound/ruff.toml` con `extend` y `TID251`/`TID252`. |
 | VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_002_summary.py` con escenarios Dado/Cuando/Entonces, paridad REST/CLI, fronteras de SLA y verificación de cumplimiento del puerto. |
@@ -49,13 +51,13 @@ Este hito es exactamente el refactor de Fase 2 previsto: la deuda deliberada de 
 | Deuda deliberada | PASS | El N+1 se elimina porque H002 es el refactor previsto; no se traslada al dominio ni se replica en otros adaptadores. `legacy/triage_rules.py` sigue congelado. |
 | Gobernanza documental | PASS | README, AGENTS.md, ROADMAP y ADR-002 se actualizan en el mismo PR; ADR-005 documenta la topología con Mermaid. |
 
-**Desviaciones con remediación obligatoria** (detalle en Seguimiento de Complejidad):
+**Decisiones estructurales ratificadas por la enmienda 1.1.0** (detalle en Seguimiento de Complejidad):
 
-1. Se declara un solo puerto en lugar de `IncidentRepositoryPort` + `SlaPolicyPort` + `ClockPort`.
+1. Se declara un solo puerto (`IncidentRepositoryPort`) en H002; `SlaPolicyPort` y `ClockPort` quedan para hitos posteriores.
 2. `src/adapters/outbound/factory.py` asume la raíz de composición y `src/composition.py` se retira.
 3. Se retira la deuda N+1 intencional, por ser el objeto mismo de H002.
 
-**Reevaluación tras el diseño de la Fase 1**: el resultado se mantiene. Los contratos no añaden dependencias ni capas nuevas; la única obligación pendiente sigue siendo la enmienda PATCH de la Constitución y el ADR-005. El contrato compartido de `inbound/summary_contract.py` no crea una arista entre adaptadores concretos, y la prueba de cumplimiento del puerto no requiere dependencias adicionales.
+**Reevaluación tras el diseño de la Fase 1**: el resultado se mantiene. Los contratos no añaden dependencias ni capas nuevas; la enmienda MINOR 1.1.0 de la Constitución y el ADR-005 quedan registrados en el mismo PR. El contrato compartido de `inbound/summary_contract.py` no crea una arista entre adaptadores concretos, y la prueba de cumplimiento del puerto no requiere dependencias adicionales.
 
 ## Estructura del Proyecto
 
@@ -111,6 +113,10 @@ tests/
 ├── test_spec_002_summary.py         # NUEVO · BDD de la spec 002 + cumplimiento del puerto
 ├── domain/test_sla_calculator.py    # NUEVO · tabla de fronteras de SLA (ADR-002)
 └── adapters/                        # existente
+    └── test_sqlite_repository.py    # NUEVO · puerto, consulta única e índice
+
+tools/
+└── benchmark_summary.py             # NUEVO · benchmark de extremo a extremo (no pytest)
 
 docs/adr/005-resumen-activos-hexagonal.md   # NUEVO · ADR del hito con Mermaid
 pyproject.toml                              # MODIFICADO · configuración Ruff
@@ -132,7 +138,7 @@ Salida: [research.md](./research.md). No quedan `NEEDS CLARIFICATION`; las decis
 | D6 | Contrato JSON compartido en `inbound/summary_contract.py` | Paridad verificable entre HTTP y CLI |
 | D7 | `reference_time` ISO 8601 naive, opcional; por defecto el instante actual | Determinismo y coherencia con el invariante de fechas |
 | D8 | Base de archivo temporal para pruebas de paridad; memoria para dominio | Un `:memory:` por conexión no se comparte entre procesos |
-| D9 | Conteo de consultas + `EXPLAIN QUERY PLAN` como verificación de rendimiento | Evita pruebas de tiempo frágiles en CI |
+| D9 | Conteo de consultas + `EXPLAIN QUERY PLAN` y benchmark de canales fuera de pytest | Evita pruebas de tiempo frágiles en CI y cubre SC-001 de extremo a extremo |
 
 ## Fase 1 · Diseño y Contratos
 
@@ -155,7 +161,7 @@ Puntos contractuales fijados:
 5. **Retiro del legado**: eliminar `src/models.py`, `src/sla_calculator.py`, `src/incident_repository.py` y `src/composition.py`; actualizar todos los imports y mover el benchmark al adaptador de salida.
 6. **Ruff**: configurar la raíz y los tres `ruff.toml`; ejecutar `uv run ruff check src/` y corregir hallazgos sin `# noqa`.
 7. **Pruebas**: BDD de la especificación, fronteras de SLA, cumplimiento del puerto, conteo de consultas y plan de consulta con índice.
-8. **Documentación y gobernanza**: ADR-005 con Mermaid, enmienda PATCH de la Constitución, actualización de ADR-002, README, AGENTS.md y ROADMAP.
+8. **Documentación y gobernanza**: ADR-005 con Mermaid, enmienda MINOR 1.1.0 de la Constitución, actualización de ADR-002, README, AGENTS.md y ROADMAP.
 
 ## Seguimiento de Complejidad
 
@@ -165,7 +171,7 @@ Puntos contractuales fijados:
 | Raíz de composición en `src/adapters/outbound/factory.py` y retiro de `src/composition.py` | El hito exige seleccionar el repositorio por `DATABASE_URL` y el inbound no puede instanciar adaptadores concretos; mantener ambos módulos crea dos raíces competidoras | Conservar `composition.py` como único ensamblador y hacer que la fábrica solo devuelva clases: la selección por DSN seguiría instanciando en la fábrica y el inbound acabaría conociendo el repositorio |
 | Retiro de la deuda N+1 de `get_active_incidents_summary` | H002 es el refactor de Fase 2: el resumen debe responder sobre 10.000 filas y la deuda solo podía vivir en el adaptador de persistencia | Mantener el método legado como segunda implementación del mismo resumen: violaría la unicidad de la capacidad (Principio III y gobernanza) y dejaría dos resultados competidores |
 
-**Remediación de gobernanza obligatoria en el PR**: ADR-005 (topología, puerto y raíz de composición, con Mermaid) y enmienda PATCH a `docs/constitution.md` y `.specify/memory/constitution.md` para nombrar la fábrica de salida como raíz de composición y el conjunto de puertos vigente en H002. Sin esa enmienda, el PR no cumple la puerta de gobernanza.
+**Remediación de gobernanza obligatoria en el PR**: ADR-005 (topología, puerto y raíz de composición, con Mermaid) y enmienda MINOR 1.1.0 a `docs/constitution.md` y `.specify/memory/constitution.md` para nombrar la fábrica de salida como raíz de composición y el conjunto de puertos vigente en H002. Sin esa enmienda, el PR no cumple la puerta de gobernanza.
 
 ## Riesgos y Mitigaciones
 
@@ -181,7 +187,7 @@ Puntos contractuales fijados:
 
 - `uv run pytest -v` en verde, incluidos H001 y los nuevos escenarios.
 - `uv run ruff check src/` sin errores con `TID251`/`TID252` activos.
-- `uv run pytest tests/test_spec_002_summary.py` demuestra paridad JSON y conteo de una sola consulta.
-- El resumen de 10.000 incidentes se valida con el benchmark del adaptador dentro del objetivo de `SC-001`.
+- `uv run pytest tests/test_spec_002_summary.py tests/adapters/test_sqlite_repository.py` demuestra paridad JSON, conteo de una sola consulta y uso del índice.
+- El resumen de 10.000 incidentes se valida con el benchmark del adaptador y con la medición de extremo a extremo HTTP/CLI (`tools/benchmark_summary.py`) dentro del objetivo de `SC-001`.
 - No quedan imports ni puntos de entrada al legado retirado; `legacy/triage_rules.py` sigue sin importarse.
 - ADR-005, enmienda de la Constitución y documentación operativa actualizados en el mismo PR.

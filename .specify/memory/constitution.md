@@ -1,43 +1,3 @@
-<!--
-Sync Impact Report
-==================
-Versión: (plantilla sin ratificar) → 1.0.0
-Tipo de incremento: MAJOR — primera ratificación formal; no existía constitución
-proyecto-específica en `.specify/memory/`, solo el scaffold con placeholders.
-
-Principios añadidos (todos nuevos respecto al scaffold):
-- I. Núcleo determinista único
-- II. Dominio puro y auditable
-- III. Arquitectura Hexagonal estricta
-- IV. Puertos explícitos y composición única
-- V. Stack gobernado y dependencias justificadas
-- VI. Fronteras verificadas estáticamente con Ruff
-- VII. BDD obligatorio y pruebas ejecutables
-
-Secciones añadidas:
-- Restricciones Adicionales (invariantes de SLA, estados, triaje, equipos, deuda
-  deliberada)
-- Flujo de Desarrollo y Puertas de Calidad
-- Gobernanza (procedimiento de enmienda, versionado, revisión de cumplimiento)
-
-Secciones eliminadas: ninguna (el scaffold no contenía contenido del proyecto).
-
-Fuentes de consolidación:
-- `docs/constitution.md` (versión vigente, 2026-11-22)
-- `docs/adr/003-arquitectura-hexagonal.md` y su nota de enmienda ADR-004
-- `pyproject.toml`, `AGENTS.md` y estado real de `src/`
-
-Elementos diferidos (no bloquean la ratificación):
-- TODO(ADR-001): el ADR que formaliza SQLite como motor por defecto no existe en
-  `docs/adr/`. La regla se mantiene por instrucción explícita; publicar el ADR es
-  trabajo documental pendiente.
-- La verificación con Ruff y la estructura `src/application/ports.py` /
-  `src/adapters/outbound/` aún no existen en el árbol; esta Constitución las fija
-  como norma y su implementación queda como intención no gobernada.
-- Este bloque Sync Impact Report es material temporal de revisión y DEBE
-  eliminarse antes de fusionar el PR de la enmienda.
--->
-
 # Constitución de IncidentOps
 
 - **Estado**: Vigente
@@ -56,7 +16,7 @@ negocio de IncidentOps, y se organiza en tres módulos canónicos:
 
 - `models.py`: `Incident`, `SLARule`, `SLAEvaluation`, `SeverityLevel`,
   `IncidentStatus` y `Team`.
-- `triage_rules.py`: clasificación por impacto, catálogo de componentes/equipos y
+- `triage.py`: clasificación por impacto, catálogo de componentes/equipos y
   detección de duplicados.
 - `sla_calculator.py`: política y cálculo de SLA.
 
@@ -64,7 +24,7 @@ Ninguna otra capa DEBE redeclarar esos tipos ni sus reglas. DTOs de transporte,
 esquemas Pydantic, filas SQL y modelos de CLI se mapean explícitamente en el borde
 y SÓLO PUEDEN contener lo necesario para el transporte.
 
-Mientras dure la migración, `src/models.py`, `src/triage_rules.py` y
+Mientras dure la migración, `src/models.py`, `legacy/triage_rules.py` y
 `src/sla_calculator.py` son legado transitorio: NO DEBEN recibir reglas nuevas ni
 convertirse en fuente de verdad alternativa. Cada reto migra su capacidad a
 `src/domain/` y retira el punto de entrada anterior en el mismo PR.
@@ -100,7 +60,7 @@ La dependencia es unidireccional y no negociable:
 | `src/application/` | Casos de uso, puertos y transacciones |
 | `src/adapters/inbound/` | REST (FastAPI), CLI (Typer) y futuro MCP |
 | `src/adapters/outbound/` | Persistencia y fuentes de datos; intercambiables |
-| `src/composition.py` | Único punto que construye clases concretas |
+| `src/adapters/outbound/factory.py` | Único punto que construye clases concretas y selecciona el repositorio por `DATABASE_URL` |
 
 Reglas obligatorias:
 
@@ -120,21 +80,26 @@ PostgreSQL o contenedores sin reescribir reglas.
 ### IV. Puertos explícitos y composición única
 
 `src/application/ports.py` DEBE declarar los puertos secundarios con
-`typing.Protocol`, sin herencia obligatoria ni dependencias externas:
-`IncidentRepositoryPort`, `SlaPolicyPort` y `ClockPort`.
+`typing.Protocol`, sin herencia obligatoria ni dependencias externas. En H002 el
+puerto vigente es `IncidentRepositoryPort`; `SlaPolicyPort` y `ClockPort` se
+incorporarán cuando un caso de uso los requiera, con implementación y prueba
+reales.
 
 `src/application/services.py` DEBE contener `IncidentService` y los casos de uso
-(triaje individual y por lote, registro, resumen de activos y reevaluación de
-SLA). El servicio SÓLO PUEDE secuenciar, transaccionar y traducir entre puertos; NO
-DEBE contener reglas de negocio, SQL ni detalles de transporte.
+vigentes en cada hito. En H002: triaje individual y resumen de activos. Triaje por
+lote, registro y reevaluación de SLA quedan en el ROADMAP y DEBEN añadirse como
+casos de uso cuando su hito los requiera. El servicio SÓLO PUEDE secuenciar,
+transaccionar y traducir entre puertos; NO DEBE contener reglas de negocio, SQL ni
+detalles de transporte.
 
 Los adaptadores de salida DEBEN ser intercambiables mediante `DATABASE_URL` sin
 tocar dominio ni casos de uso. SQLite es el valor por defecto; PostgreSQL es el
 destino de H004. Todo el SQL, DDL, siembra de políticas y mapeo fila → entidad
 vive exclusivamente en `src/adapters/outbound/`.
 
-`src/composition.py` es el único lugar que instancia clases concretas y las
-inyecta. Ningún adaptador DEBE autoconstruir sus dependencias de persistencia.
+`src/adapters/outbound/factory.py` es el único lugar que instancia clases
+concretas, selecciona el repositorio por `DATABASE_URL` y las inyecta. Ningún
+adaptador DEBE autoconstruir sus dependencias de persistencia.
 
 **Razón**: `typing.Protocol` mantiene el acoplamiento estructural y permite dobles
 en memoria; una raíz de composición única hace que cambiar de motor sea un cambio
@@ -356,4 +321,4 @@ práctica se corrige; no se interpreta la Constitución para acomodarla.
 esta Constitución describe obligaciones. Ante conflicto, prevalece la
 Constitución.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22
+**Version**: 1.1.0 | **Ratified**: 2026-11-22 | **Last Amended**: 2026-11-22

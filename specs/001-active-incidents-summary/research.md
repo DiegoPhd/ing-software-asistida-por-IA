@@ -37,7 +37,7 @@ No quedan incógnitas marcadas como `NEEDS CLARIFICATION`. Cada decisión siguie
 - **Decisión**: `src/adapters/outbound/factory.py` expone `build_incident_service(database_url: Optional[str] = None)` y `create_repository(...)`. Lee `DATABASE_URL` (por defecto `sqlite:///:memory:`) y rechaza esquemas distintos de `sqlite` con un error claro. `src/composition.py` se retira y los adaptadores de entrada importan la fábrica.
 - **Razón**: el inbound no puede conocer drivers ni repositorios concretos; la selección por DSN es un detalle de salida. Dejar `composition.py` y `factory.py` como ensambladores alternativos produciría dos formas competidoras de construir el servicio.
 - **Alternativas consideradas**: (a) mantener `composition.py` como ensamblador y pasar la URL desde el borde: el inbound seguiría eligiendo o construyendo persistencia; (b) fábrica que solo devuelve la clase y composición que la instancia: la lógica de selección queda partida en dos módulos y la fábrica instancia de todos modos.
-- **Consecuencia de gobernanza**: la Constitución §IV nombra `src/composition.py` como único punto de ensamblaje. Se requiere ADR-005 y enmienda PATCH para trasladar la raíz a la fábrica de salida y fijar el conjunto de puertos vigente.
+- **Consecuencia de gobernanza**: la Constitución §IV ya nombra `src/adapters/outbound/factory.py` como único punto de ensamblaje y fija `IncidentRepositoryPort` como puerto vigente de H002. La enmienda MINOR 1.1.0 y el ADR-005 quedan registrados en el mismo PR.
 - **Frontera estática**: el `ruff.toml` del inbound prohíbe `src.adapters.outbound.sqlite_repository` y permite únicamente `src.adapters.outbound.factory`; el prefijo genérico `sqlite` no cubriría el nombre real del módulo.
 
 ## D6 · Contrato de transporte compartido
@@ -63,15 +63,15 @@ No quedan incógnitas marcadas como `NEEDS CLARIFICATION`. Cada decisión siguie
 
 ## D9 · Verificación de rendimiento
 
-- **Decisión**: validar con `EXPLAIN QUERY PLAN` que la consulta filtrada usa `idx_incidents_component_status`, contar las consultas emitidas y medir el resumen de 10.000 filas con el benchmark `python -m src.adapters.outbound.sqlite_repository --records 10000`.
+- **Decisión**: validar con `EXPLAIN QUERY PLAN` que la consulta filtrada usa `idx_incidents_component_status`, contar las consultas emitidas, medir el resumen de 10.000 filas con el benchmark `python -m src.adapters.outbound.sqlite_repository --records 10000` y medir el mismo resumen por HTTP y CLI con `tools/benchmark_summary.py`.
 - **Razón**: una aserción de tiempo en CI es frágil (máquina, carga, intérprete) y no demuestra la causa de la mejora. El plan de consulta y el conteo prueban la propiedad que H002 introduce; el tiempo se reporta como evidencia en el PR frente a `SC-001`.
 - **Alternativas consideradas**: (a) `assert elapsed < 1` en pytest: puede fallar por ruido y no distingue regresión de entorno; (b) solo benchmark manual: no protege contra la reaparición del N+1; se combinan ambas.
 
-## D10 · Nombres del dominio y deuda de alineación
+## D10 · Nombres del dominio
 
-- **Decisión**: los módulos nuevos usan los nombres canónicos `models.py` y `sla_calculator.py`. `src/domain/triage.py` de H001 no se renombra y `legacy/triage_rules.py` permanece congelado.
+- **Decisión**: los módulos nuevos usan los nombres canónicos `models.py` y `sla_calculator.py`. `src/domain/triage.py` es el nombre canónico del triaje de H001 y la Constitución se corrige para reflejarlo; `legacy/triage_rules.py` permanece congelado.
 - **Razón**: el hito migra la capacidad de SLA, no la de triaje; renombrar el módulo de H001 obligaría a tocar su contrato y sus pruebas sin aportar valor a H002. La Constitución se cumple por responsabilidad y unicidad, no por renombrar archivos existentes.
-- **Alternativas consideradas**: renombrar `triage.py` a `triage_rules.py` en este PR: alcance no solicitado y riesgo de romper la spec 001; se deja como deuda de alineación documentada.
+- **Alternativas consideradas**: renombrar `triage.py` a `triage_rules.py` en este PR: alcance no solicitado y riesgo de romper la spec 001. Se descarta; la Constitución se alinea con el nombre real del módulo.
 
 ## D11 · Errores y códigos estables
 

@@ -1,7 +1,9 @@
 # Constitución de IncidentOps
 
 - **Estado**: Vigente
+- **Versión**: 1.1.0
 - **Fecha**: 2026-11-22
+- **Última enmienda**: 2026-11-22
 - **Ámbito**: todo el repositorio
 - **Precedencia**: Constitución → ADR → código. `AGENTS.md` es guía operativa,
   `ROADMAP.md` define capacidades y `CONTEXT_LOG.md` es bitácora; ninguno puede
@@ -116,7 +118,7 @@ evadir el catálogo.
 | `src/application/` | `IncidentService`, casos de uso, puertos y transacciones |
 | `src/adapters/inbound/` | REST, CLI y futuro MCP |
 | `src/adapters/outbound/` | SQLite, PostgreSQL futuro, JSON de muestra |
-| Raíz de composición | Único lugar que conoce clases concretas e inyecta adaptadores |
+| Raíz de composición (`src/adapters/outbound/factory.py`) | Único lugar que conoce clases concretas, selecciona el repositorio por `DATABASE_URL` e inyecta adaptadores |
 
 La dependencia es unidireccional: `adapters → application → domain`. El dominio no
 importa nada de `src`; la aplicación no importa frameworks ni adaptadores
@@ -125,9 +127,13 @@ concretos.
 ### 2.2 Puertos
 
 - Los puertos secundarios se declaran con `typing.Protocol`, sin herencia
-  obligatoria: `IncidentRepositoryPort`, `SlaPolicyPort`, `ClockPort`.
-- Los puertos de entrada son los casos de uso que expone `IncidentService`:
-  triaje individual y por lote, registro, resumen de activos y reevaluación de SLA.
+  obligatoria. En H002 el puerto vigente es `IncidentRepositoryPort`;
+  `SlaPolicyPort` y `ClockPort` se incorporarán cuando un caso de uso los
+  requiera, con implementación y prueba reales.
+- Los puertos de entrada son los casos de uso que expone `IncidentService`. En
+  H002: triaje individual y resumen de activos. Triaje por lote, registro y
+  reevaluación de SLA quedan en el ROADMAP y se añadirán cuando su hito los
+  requiera.
 - `IncidentService` solo secuencia, transacciona y traduce entre puertos; no
   contiene reglas de negocio, SQL ni detalles de transporte.
 
@@ -147,7 +153,7 @@ concretos.
 
 ### 2.4 Migración desde el código actual
 
-`src/models.py`, `src/triage_rules.py`, `src/sla_calculator.py` y
+`src/models.py`, `legacy/triage_rules.py`, `src/sla_calculator.py` y
 `src/incident_repository.py` son legado transitorio. No se añaden reglas nuevas
 allí. Cada reto migra su capacidad al layout hexagonal y retira o reemplaza el
 punto de entrada anterior en el mismo PR, para no dejar dos formas competidoras de
