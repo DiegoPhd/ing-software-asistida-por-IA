@@ -18,6 +18,10 @@
 - Q: ¿Qué canal usa la consola cuando la base no responde? → A: escribe el mismo documento JSON en stdout y termina con código 1; el documento es el resultado del comando, no un `problem+json`.
 - Q: ¿Se admite el alias `postgres://`? → A: no; sólo `postgresql://`, conforme a ADR-007. Cualquier otro esquema es error de configuración.
 - Q: ¿Se migran los datos SQLite existentes? → A: no. No hay herramienta de migraciones en este hito.
+- Q: ¿Qué debe informar la salud cuando la base conecta pero el esquema aún no existe? → A: sólo conectividad mediante una consulta trivial; el esquema se asegura de forma idempotente al componer el repositorio cuando la base responde y, si no estaba disponible, en la primera operación de negocio, nunca desde la comprobación de salud.
+- Q: ¿Qué ocurre si `DATABASE_URL` está definida pero vacía? → A: es un error de configuración antes de abrir conexión; sólo la ausencia total de la variable usa memoria, para que un despliegue incompleto no pierda datos en silencio.
+- Q: ¿Qué devuelven las operaciones de negocio con la base caída? → A: sin cambios: el error inesperado genérico ya existente (500 en HTTP y salida 1 en consola, sin detalles internos); el 503 queda reservado a `/health` y no se añaden códigos nuevos.
+- Q: ¿Qué salida y código de salida produce `health` con una configuración inválida? → A: `application/problem+json` en stderr con el código estable `CONFIG_DATABASE_URL_INVALIDA` y salida 2, sin documento de salud y sin traza; el proceso de la API no arranca.
 
 ## Escenarios de Usuario y Pruebas *(obligatorio)*
 
@@ -67,10 +71,12 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **Base que deja de responder durante la comprobación**: la espera de la comprobación está acotada y el resultado es `unavailable` dentro del tiempo límite, nunca 500 ni una espera indefinida.
 - **Fallo de autenticación o de credenciales**: se informa igual que una caída de conectividad; el documento nunca distingue motor, usuario, host ni causa interna.
 - **Arranque con la base caída**: el servicio levanta y responde 503; ninguna operación de negocio se ejecuta contra un esquema no inicializado y el arranque no se bloquea ni se reintenta en bucle infinito.
+- **Conexión sana con esquema ausente**: la salud informa `connected` porque la conectividad es real; la comprobación no ejecuta DDL ni exige las tablas, y el esquema se asegura al componer el repositorio cuando la base responde o, si no estaba disponible, en la primera operación de negocio.
 - **Base que vuelve tras una caída**: la primera consulta de salud posterior informa 200 sin reiniciar el proceso y sin reiniciar el contenedor.
-- **Configuración de motor no admitida**: el proceso no arranca, informa un error de configuración comprensible y no abre conexión ni cae a almacenamiento en memoria.
+- **Configuración de motor no admitida**: el proceso no arranca, informa un error de configuración comprensible y no abre conexión ni cae a almacenamiento en memoria; en la consola `health` el error es un `application/problem+json` con `CONFIG_DATABASE_URL_INVALIDA` y salida 2, nunca una traza.
 - **Alias de DSN no admitido**: `postgres://…` se rechaza como configuración inválida, igual que cualquier otro esquema distinto de `sqlite://` y `postgresql://`.
 - **DSN con credenciales embebidas**: las credenciales entran por entorno y nunca aparecen en documentos de salud, logs, mensajes de error ni en la imagen.
+- **DSN definido pero vacío**: se rechaza como configuración inválida y no cae a almacenamiento en memoria; sólo la ausencia total de la variable habilita la ruta local.
 - **Volumen eliminado de forma explícita**: es la única pérdida de datos admitida; `docker compose down` sin `-v` conserva los datos.
 - **Base publicada al host**: no se publica por defecto; si el operador decide publicarla, es una decisión explícita fuera del despliegue de referencia.
 - **Consola con la base caída**: escribe exactamente el documento de indisponibilidad en stdout y termina con código 1, sin traza, sin mensaje adicional y sin `problem+json`.
@@ -78,6 +84,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **Healthcheck del contenedor**: usa el mismo `/health`, por lo que un 503 también marca el contenedor como no sano y evita declararlo listo antes de tiempo.
 - **Cliente o intermediario con respuestas viejas**: el chequeo de salud no se cachea ni en el servidor ni en intermediarios.
 - **Reinicio de la base con la API activa**: la API no pierde configuración ni estado en memoria relevante; al volver la base, el servicio se recupera solo.
+- **Operación de negocio con la base caída**: se informa con el error inesperado genérico ya existente (500 en HTTP y salida 1 en consola, sin detalles internos); sólo `/health` traduce la caída a 503 y no se introducen códigos nuevos.
 
 ## Requisitos *(obligatorio)*
 
@@ -88,7 +95,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **FR-003**: La consola DEBE ofrecer el comando `health`, que escribe en la salida estándar el mismo documento que `GET /health` y termina con código de salida 0 si está conectado o 1 si no lo está, sin depender del adaptador HTTP.
 - **FR-004**: La comprobación de salud DEBE exponerse como caso de uso en la capa de aplicación y delegar en el puerto de repositorio; el servicio NO DEBE contener SQL, códigos HTTP ni detalles de motor.
 - **FR-005**: El puerto de repositorio DEBE mantener `check_health() -> bool`, sin lanzar excepciones: sólo devuelve `True` si una consulta trivial obtiene fila, y `False` ante cualquier fallo de conectividad, autenticación o tiempo de espera.
-- **FR-006**: La fábrica de salida DEBE seleccionar el repositorio exclusivamente por `DATABASE_URL`: ausente o `sqlite:///:memory:` → SQLite en memoria; `sqlite:///ruta` → SQLite en archivo; `postgresql://…` → PostgreSQL; cualquier otro esquema → `ConfigurationError` antes de abrir conexión, sin fallback silencioso.
+- **FR-006**: La fábrica de salida DEBE seleccionar el repositorio exclusivamente por `DATABASE_URL`: variable ausente o `sqlite:///:memory:` → SQLite en memoria; `sqlite:///ruta` → SQLite en archivo; `postgresql://…` → PostgreSQL; variable definida vacía o compuesta sólo por espacios → `ConfigurationError` antes de abrir conexión, igual que cualquier otro esquema no admitido, sin fallback silencioso.
 - **FR-007**: Ningún adaptador de entrada DEBE leer `DATABASE_URL` ni instanciar un repositorio concreto; la fábrica es el único punto que interpreta el DSN.
 - **FR-008**: El adaptador PostgreSQL DEBE implementar el puerto completo con semántica equivalente a SQLite: `INSERT` estricto, conflicto de identificador traducido al mismo error de aplicación, columnas explícitas, filtro de activos y sin cálculo de SLA, similitud, claves de grupo ni ordenación.
 - **FR-009**: El esquema PostgreSQL DEBE crearse de forma idempotente con las mismas tablas, columnas e índices compuestos; `created_at` y `resolved_at` DEBEN persistirse como texto naive ISO 8601 con microsegundos y NUNCA como `TIMESTAMP`, `TIMESTAMPTZ`, época numérica ni `now()` del motor.
@@ -100,6 +107,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - **FR-015**: La base NO DEBE publicarse al host por defecto; las credenciales DEBEN entrar por entorno, no versionarse y documentarse mediante un `.env.example` con marcadores, con `.env` ignorado por Git.
 - **FR-016**: `.dockerignore` DEBE excluir secretos, metadatos de Git, entornos virtuales, cachés, bases locales y artefactos de desarrollo para que la imagen sea mínima y reproducible.
 - **FR-017**: La documentación operativa DEBE describir el arranque, la parada, la persistencia del volumen, el diagnóstico de salud y las variables de entorno necesarias.
+- **FR-018**: Una configuración de motor inválida (esquema no admitido, alias `postgres://` o `DATABASE_URL` vacía) DEBE impedir que el proceso de la API arranque y DEBE informarse en la consola `health` con un `application/problem+json` en stderr, código estable `CONFIG_DATABASE_URL_INVALIDA` y código de salida 2, sin traza, sin documento de salud y sin abrir conexión.
 
 ### Requisitos No Funcionales
 
@@ -130,11 +138,13 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 - `Content-Type: application/json` en ambos estados; `Cache-Control: no-store` para que ningún intermediario reutilice un resultado viejo.
 - La consola no imprime traza ni mensaje adicional; el documento es el resultado.
+- Sólo `/health` traduce una caída de la base a 503; triaje, resumen, alta y SLA conservan sus códigos y su manejo de error inesperado (FR-012).
+- Una configuración de motor inválida no produce documento de salud: la consola escribe `CONFIG_DATABASE_URL_INVALIDA` en stderr con salida 2 y la API no arranca (FR-018).
 
 ### Entidades Clave
 
 - **Estado de salud**: resultado de evaluar una sola vez la conectividad con la base, compuesto por `status` (`ok` o `error`) y `database` (`connected` o `unavailable`); es la unidad que comparten HTTP y consola.
-- **Comprobación de conectividad**: consulta trivial contra el almacenamiento configurado que responde con un booleano y no propaga fallos.
+- **Comprobación de conectividad**: consulta trivial contra el almacenamiento configurado que responde con un booleano, no propaga fallos y no depende de que el esquema de negocio exista.
 - **DSN de configuración**: cadena de conexión que determina el motor y se interpreta en un único punto; nunca define comportamiento de negocio.
 - **Motor de persistencia**: implementación intercambiable del mismo puerto de repositorio, con igual semántica de escritura, lectura y errores.
 - **Incidente**: entidad de negocio ya definida en H003; H004 no la modifica, sólo la persiste en un motor adicional.
@@ -144,13 +154,13 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 ### Resultados Medibles
 
-- **SC-001**: El 100 % de las consultas de salud informa `connected` si y sólo si la base responde en ese instante, sin caché ni valores obsoletos.
+- **SC-001**: El 100 % de las consultas de salud informa `connected` si y sólo si la base responde a una consulta trivial en ese instante, sin caché ni valores obsoletos.
 - **SC-002**: El 100 % de las comprobaciones con la base caída responde 503 y nunca 500, dentro del tiempo límite.
 - **SC-003**: HTTP y consola coinciden en el 100 % de los campos y valores del documento de salud, en ambos estados.
 - **SC-004**: Desde un clon limpio, una sola orden deja el despliegue de referencia sano, con la API esperando a la base y sin arranques degradados silenciosos.
 - **SC-005**: El 100 % de los datos sobrevive a recrear o reiniciar la API y a reiniciar la base; sólo se pierden al eliminar el volumen de forma explícita.
 - **SC-006**: La suite de contrato pasa en ambos motores con cero divergencias y el comportamiento de triaje, resumen, alta y SLA no cambia.
-- **SC-007**: El 100 % de las configuraciones de motor no admitidas falla de forma explícita y comprensible, sin abrir conexión ni caer a memoria.
+- **SC-007**: El 100 % de las configuraciones de motor no admitidas o vacías falla de forma explícita y comprensible, sin abrir conexión ni caer a memoria.
 - **SC-008**: El 100 % de la suite se ejecuta sin Docker ni credenciales, y la integración con PostgreSQL se ejecuta cuando el motor está disponible.
 
 ## Supuestos
@@ -160,9 +170,10 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 - No hay migración de datos SQLite existentes ni herramienta de migraciones de esquema.
 - No hay autenticación en `/health`; no expone datos de negocio.
 - El healthcheck del contenedor `api` usa el propio `/health`, de modo que 503 también marca el contenedor como no sano.
-- La API puede arrancar antes de que el esquema exista; la primera operación de negocio lo inicializa de forma idempotente.
-- La ruta local sin `DATABASE_URL` sigue siendo el camino por defecto para desarrollo y pruebas; el almacenamiento en memoria es efímero por definición.
+- La API puede arrancar antes de que el esquema exista y antes de que la base esté disponible; el esquema se asegura al componer el repositorio cuando la base responde y, si no, en la primera operación de negocio, siempre de forma idempotente.
+- La ruta local sin `DATABASE_URL` definida sigue siendo el camino por defecto para desarrollo y pruebas; una variable definida pero vacía es un error de configuración y el almacenamiento en memoria es efímero por definición.
 - El operador que necesite inspeccionar la base desde el host lo hace de forma explícita; no forma parte del despliegue de referencia.
+- La API del despliegue de referencia se publica en el host en un puerto configurable por entorno con 8000 como valor por defecto; la base sólo es alcanzable desde la red de Compose.
 
 ### Dependencias
 
