@@ -54,6 +54,9 @@
     - OpenCode primerametnte revisar en diferentes directorios (`~/.config/opencode/skills`, `.opencode/skills`) las skills que tenga disponible en el proyecto, luego el usuario invoca la skill asociada, ya sea con una instrucción o simplemente con `@skill-id` enseguida se empiezan a ejecutar de forma ordenada las instrucciones de la skill.
     - Fue necesario por el nivel de los archivos, vamos de más alto nivel (ADR) a más bajo nivel (Hito), así, el ADR continente la decisión estructural, con alternativas y consecuencias, luego en la constitución se usa el ADR para tomar decisiones y finalmente el Hito lee la constitución para las específicaciones, el pla y las tareas.
 - **Valor de la Arquitectura Hexagonal**: Explica cómo compartir `IncidentService` e `IncidentRepositoryPort` facilitó exponer FastAPI, Typer y el adaptador PostgreSQL sin tocar el dominio (y cómo prepara la incorporación de futuros adaptadores).
+    - En este caso `IncidentService` tiene 5 capacidades (triage, summary, create, sla y health), y depende del protocolo de `IncidentRepositoryPort`. Las 5 capacidades junto con FastAPI y Typer comparten  un método de servicio, haciendo que solo haya una sola lógica.
+    Esto además prepara la implementación a futuros adaptadores porque simplemente es implementar el protocolo y ampliar el suite de contrato.
+
 - **Uso intencional de *Reasoning / Extended Thinking* en OpenCode**: ¿En qué comandos (`/speckit.clarify`, `/speckit.plan`, `/speckit.analyze`) aportó mayor valor el razonamiento extendido y en cuáles (`/speckit.implement`) resultó más eficiente un modelo rápido?
     - En este caso no aplica, dado que siempre utilicé el mismo modelo con el mismo esfuerzo el cual fue DeepSeek V4.1 Flash con esfuerzo en High
 ---
