@@ -74,8 +74,8 @@ Reglas obligatorias:
   capacidad nueva, se añade un caso de uso.
 - El dominio NO DEBE conocer la existencia de ningún adaptador.
 
-**Razón**: es la decisión de ADR-003, enmendada por ADR-004 en el contrato de
-interfaces (FastAPI y Typer desde H001) y completada por ADR-007 (persistencia
+**Razón**: es la decisión de ADR-003, enmendada por ADR-009 en el contrato de
+interfaces (FastAPI y Typer desde H001) y completada por ADR-004 (persistencia
 dual sin ORM) y ADR-008 (runtime en contenedores). Fijar la frontera permite
 añadir MCP, PostgreSQL o contenedores sin reescribir reglas.
 
@@ -96,7 +96,7 @@ negocio, SQL ni detalles de transporte.
 
 Los adaptadores de salida DEBEN ser intercambiables mediante `DATABASE_URL` sin
 tocar dominio ni casos de uso. SQLite es el valor por defecto; PostgreSQL es un
-motor aprobado por ADR-007 para H004. `src/adapters/outbound/factory.py` es el único
+motor aprobado por ADR-004 para H004. `src/adapters/outbound/factory.py` es el único
 lugar que interpreta el DSN (`sqlite:///:memory:`, `sqlite:///ruta` o
 `postgresql://`), instancia la clase concreta y la inyecta; ningún adaptador DEBE
 autoconstruir sus dependencias de persistencia. Todo el SQL, DDL, siembra de
@@ -114,7 +114,7 @@ localizado y auditable.
 - REST: FastAPI + Pydantic v2. CLI: Typer. Servidor: Uvicorn.
 - Persistencia: `sqlite3` de la biblioteca estándar como motor por defecto y
   `psycopg[binary]` para PostgreSQL, ambos sin ORM, conforme a ADR-001
-  (parcialmente reemplazado por ADR-007). La selección se resuelve exclusivamente
+  (parcialmente reemplazado por ADR-004). La selección se resuelve exclusivamente
   por `DATABASE_URL`; cualquier motor adicional DEBE tener un ADR aprobado antes
   de introducir su dependencia.
 - Runtime: topología de referencia multi-contenedor con Docker Compose (`api` y

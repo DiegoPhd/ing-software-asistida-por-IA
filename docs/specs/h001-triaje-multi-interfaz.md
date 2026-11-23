@@ -368,7 +368,7 @@ No quedan puntos abiertos. Las cuatro discrepancias iniciales se cerraron así:
 | D-01b | `duplicate_group_key` en E-01 | Resuelta: `null`. La clave sintética `"payments-gateway:http-502-outage"` se descarta por incompatibilidad con §1.4 |
 | D-02b | `incident_id` con formato libre | Resuelta: 1–64 caracteres tras `.strip()`, sin regex; el dominio no impone formato de identificador |
 | D-03b | Tope de `raw_text` | Resuelta: 10 000 caracteres, para acotar payload y evitar clasificaciones sobre entradas patológicas |
-| D-04b | ADR de interfaces | Resuelta: `docs/adr/004-contrato-interfaces-h001.md` |
+| D-04b | ADR de interfaces | Resuelta: `docs/adr/009-contrato-interfaces-h001.md` |
 
 ## 12. Checklist de PR
 

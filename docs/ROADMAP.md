@@ -65,7 +65,7 @@ dedicada y verificación real de conectividad operativa.
   SQLite o PostgreSQL por `DATABASE_URL` y distingue ausencia de vacío. El despliegue de referencia
   vive en `Dockerfile`, `docker-compose.yml`, `.dockerignore` y `.env.example`, y se verifica con
   `tools/verify_runtime.py --compose --resiliencia`. Evidencia en
-  [ADR-007](adr/007-persistencia-postgresql-sin-orm.md) y
+  [ADR-004](adr/004-persistencia-postgresql-y-runtime-contenedores.md) y
   [ADR-008](adr/008-runtime-contenedores-docker-compose.md).
 - **Deuda deliberada**: el bloqueo por componente sigue siendo de proceso; no hay migraciones
   versionadas ni pooler y los datos SQLite no se migran automáticamente.

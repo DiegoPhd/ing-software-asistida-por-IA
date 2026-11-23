@@ -50,7 +50,7 @@ fijan en [contracts/health.schema.json](./contracts/health.schema.json).
 
 La validación de invariantes de escritura (`incident_id` y `component` no vacíos, severidad con
 política, estado conocido, fechas naive, terminal con `resolved_at`, equipo del catálogo) se replica
-en el adaptador PostgreSQL igual que en SQLite, sin importar el otro adaptador (ADR-007 §4).
+en el adaptador PostgreSQL igual que en SQLite, sin importar el otro adaptador (ADR-004 §4).
 
 ## 4 · Esquema PostgreSQL
 
@@ -138,4 +138,4 @@ estaba disponible, en la primera operación de negocio.
 - Duplicados: activos, mismo componente, distinto id, texto no vacío, similitud ≥ 0.75 y ventana por
   severidad del más antiguo, todo en `src/domain/triage_rules.py`.
 - Festivos locales siguen sin descontarse (deuda de ADR-002).
-- Una sola réplica de API y cerrojo por componente de proceso (ADR-006/ADR-007).
+- Una sola réplica de API y cerrojo por componente de proceso (ADR-006/ADR-004).

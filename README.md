@@ -51,11 +51,11 @@ src/
   `src/adapters/inbound/ruff.toml`.
 - Decisiones: [ADR-002](docs/adr/002-calculo-sla-horario-habil.md),
   [ADR-003](docs/adr/003-arquitectura-hexagonal.md),
-  [ADR-004](docs/adr/004-contrato-interfaces-h001.md),
+  [ADR-004](docs/adr/004-persistencia-postgresql-y-runtime-contenedores.md),
   [ADR-005](docs/adr/005-resumen-activos-hexagonal.md),
   [ADR-006](docs/adr/006-ciclo-vida-duplicados-sla.md),
-  [ADR-007](docs/adr/007-persistencia-postgresql-sin-orm.md) y
-  [ADR-008](docs/adr/008-runtime-contenedores-docker-compose.md).
+  [ADR-008](docs/adr/008-runtime-contenedores-docker-compose.md) y
+  [ADR-009](docs/adr/009-contrato-interfaces-h001.md).
 
 ---
 
@@ -251,7 +251,7 @@ Contratos y guía de validación:
 
 Añade un adaptador PostgreSQL (`psycopg[binary]`, sin ORM), la selección de motor
 por `DATABASE_URL`, una salud real por petición con paridad HTTP/CLI y el
-despliegue de referencia con Docker Compose (ADR-007 y ADR-008).
+despliegue de referencia con Docker Compose (ADR-004 y ADR-008).
 
 ### Salud del servicio
 

@@ -1,4 +1,4 @@
-"""Raíz de composición: selección del repositorio por `DATABASE_URL` (ADR-007).
+"""Raíz de composición: selección del repositorio por `DATABASE_URL` (ADR-004).
 
 Único punto que conoce clases concretas y el único que interpreta el DSN. El
 inbound nunca instancia un repositorio ni lee la variable. La ausencia total de

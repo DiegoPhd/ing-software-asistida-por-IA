@@ -6,7 +6,7 @@
 
 **Estado**: Borrador
 
-**Entrada**: Descripción del usuario: "Preparar IncidentOps para ejecutarse en contenedores junto con una base de datos relacional dedicada en producción y exponer un chequeo real de salud de conectividad, sin romper el camino local sin infraestructura ni la paridad REST/CLI." Respaldada por: ADR-007 (persistencia dual SQLite/PostgreSQL sin ORM) y ADR-008 (runtime multi-contenedor); Constitución §IV (puertos y composición única) y §V (stack gobernado).
+**Entrada**: Descripción del usuario: "Preparar IncidentOps para ejecutarse en contenedores junto con una base de datos relacional dedicada en producción y exponer un chequeo real de salud de conectividad, sin romper el camino local sin infraestructura ni la paridad REST/CLI." Respaldada por: ADR-004 (persistencia dual SQLite/PostgreSQL sin ORM) y ADR-008 (runtime multi-contenedor); Constitución §IV (puertos y composición única) y §V (stack gobernado).
 
 ## Clarifications
 
@@ -16,7 +16,7 @@
 - Q: ¿El proceso debe abortar si la base no responde al arrancar? → A: no. El servicio arranca y reporta 503; Compose evita el arranque prematuro con `depends_on: service_healthy`, y la API se recupera sin reiniciarse cuando la base vuelve.
 - Q: ¿Qué ocurre con un motor no admitido en la configuración? → A: error de configuración al componer el repositorio; el proceso no arranca y nunca cae a un almacenamiento local por defecto.
 - Q: ¿Qué canal usa la consola cuando la base no responde? → A: escribe el mismo documento JSON en stdout y termina con código 1; el documento es el resultado del comando, no un `problem+json`.
-- Q: ¿Se admite el alias `postgres://`? → A: no; sólo `postgresql://`, conforme a ADR-007. Cualquier otro esquema es error de configuración.
+- Q: ¿Se admite el alias `postgres://`? → A: no; sólo `postgresql://`, conforme a ADR-004. Cualquier otro esquema es error de configuración.
 - Q: ¿Se migran los datos SQLite existentes? → A: no. No hay herramienta de migraciones en este hito.
 - Q: ¿Qué debe informar la salud cuando la base conecta pero el esquema aún no existe? → A: sólo conectividad mediante una consulta trivial; el esquema se asegura de forma idempotente al componer el repositorio cuando la base responde y, si no estaba disponible, en la primera operación de negocio, nunca desde la comprobación de salud.
 - Q: ¿Qué ocurre si `DATABASE_URL` está definida pero vacía? → A: es un error de configuración antes de abrir conexión; sólo la ausencia total de la variable usa memoria, para que un despliegue incompleto no pierda datos en silencio.
@@ -166,7 +166,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 ## Supuestos
 
-- Un solo host, una sola réplica de API y cerrojo por componente de proceso (ADR-006/007); escalar exige otro ADR.
+- Un solo host, una sola réplica de API y cerrojo por componente de proceso (ADR-006/004); escalar exige otro ADR.
 - `postgres:16-alpine` y `python:3.12-slim` son las versiones fijadas del hito.
 - No hay migración de datos SQLite existentes ni herramienta de migraciones de esquema.
 - No hay autenticación en `/health`; no expone datos de negocio.
@@ -178,7 +178,7 @@ Como desarrollador, necesito seguir trabajando con almacenamiento local efímero
 
 ### Dependencias
 
-- ADR-007: adaptador PostgreSQL dedicado con `psycopg[binary]`, sin ORM.
+- ADR-004: adaptador PostgreSQL dedicado con `psycopg[binary]`, sin ORM.
 - ADR-008: topología `api` + `db` con Compose, volumen nombrado y healthchecks.
 - Constitución §IV y §V; `IncidentRepositoryPort`, `ClockPort` y la fábrica única.
 - Contratos de triaje, resumen, alta y SLA de H001–H003 sin cambios.

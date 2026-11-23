@@ -12,7 +12,7 @@ de entrada lee la variable ni instancia una clase concreta.
 | `sqlite:///ruta/incidentops.db` | `SQLiteIncidentRepository(ruta)` | Archivo local |
 | `postgresql://usuario:clave@host:5432/base` | `PostgresIncidentRepository(dsn)` | Motor dedicado |
 | Vacía (`""`) o solo espacios | `ConfigurationError` | Debe fallar antes de abrir conexión; nunca cae a memoria |
-| `postgres://…` | `ConfigurationError` | Alias no admitido por ADR-007 |
+| `postgres://…` | `ConfigurationError` | Alias no admitido por ADR-004 |
 | `sqlite://` o `sqlite:///` sin ruta | `ConfigurationError` | Falta archivo o memoria |
 | Cualquier otro esquema | `ConfigurationError` | Sin fallback silencioso |
 

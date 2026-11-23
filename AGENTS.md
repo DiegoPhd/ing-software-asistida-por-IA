@@ -38,7 +38,7 @@ Ruff is configured in `pyproject.toml` (`target-version = "py310"`, `select = ["
 ## Do not "fix" remaining intentional debt
 - `find_open_duplicates` only applies the structural filter (active, same component, different id); similarity and the severity window are domain rules in `assess_duplicates`, never SQL. Do not push them into the adapter.
 - Duplicate alerts never merge, re-key or modify previous incidents; `duplicate_group_key` is resolved by the domain and inherited from the oldest original.
-- The per-component lock only serializes within a single process; do not add a distributed lock, pooler or replica coordination (ADR-006/ADR-007).
+- The per-component lock only serializes within a single process; do not add a distributed lock, pooler or replica coordination (ADR-006/ADR-004).
 - Local holidays are still not subtracted from the business-hours calculation (ADR-002).
 - `legacy/triage_rules.py` is a frozen historical copy: never treat it as a source of truth and never import it.
 - `ON CONFLICT DO UPDATE` exists **only** in the idempotent `sla_policies` seeding. The incident path is a strict `INSERT`; never add an UPSERT, `REPLACE` or merge over `incidents`.

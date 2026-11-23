@@ -15,12 +15,12 @@ máquinas: la versión de Python, las variables de entorno, la ruta de la base y
 forma de arrancar la API dependen del host. H004 exige un runtime reproducible y
 una verificación efectiva de conectividad contra una base de datos dedicada.
 
-Esta decisión es independiente del motor elegido en ADR-007: aquí se fija **cómo
+Esta decisión es independiente del motor elegido en ADR-004: aquí se fija **cómo
 se empaqueta y se ejecuta** la API junto a su base de datos, no qué adaptador de
 persistencia se usa. Las restricciones son: un solo host para desarrollo y CI, sin
 plataforma de orquestación, con credenciales fuera de la imagen, arranque
 ordenado, API sin estado local y una sola réplica mientras el cerrojo por
-componente sea de proceso (ADR-006 y ADR-007).
+componente sea de proceso (ADR-006 y ADR-004).
 
 ---
 
@@ -89,7 +89,7 @@ repositorio y falla de forma explícita si la base no responde, en lugar de
 arrancar en un estado degradado silencioso.
 
 **f) Una sola réplica de API.** La topología mantiene una instancia para no romper
-el supuesto de cerrojo por componente de ADR-006 y ADR-007. Escalar a varias
+el supuesto de cerrojo por componente de ADR-006 y ADR-004. Escalar a varias
 réplicas exige un ADR de bloqueo distribuido y una revisión de esta topología.
 
 ```mermaid

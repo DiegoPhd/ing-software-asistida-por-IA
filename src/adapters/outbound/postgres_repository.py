@@ -1,4 +1,4 @@
-"""Adaptador de salida PostgreSQL de incidentes y políticas de SLA (ADR-007).
+"""Adaptador de salida PostgreSQL de incidentes y políticas de SLA (ADR-004).
 
 Implementa el mismo `IncidentRepositoryPort` que SQLite con `psycopg` y
 `dict_row`: conexión de corta duración por operación, DDL idempotente, siembra
@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_incidents_dup_key
     ON incidents (duplicate_group_key, status)
 """
 
-# Siembra idempotente de referencia: nunca toca `incidents` (ADR-007 §3e).
+# Siembra idempotente de referencia: nunca toca `incidents` (ADR-004 §3e).
 SQL_SEMBRAR_POLITICA = """
 INSERT INTO sla_policies (severity, max_resolution_minutes, operates_24x7)
 VALUES (%s, %s, %s)

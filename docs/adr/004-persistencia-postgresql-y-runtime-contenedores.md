@@ -1,4 +1,4 @@
-# ADR-007: Persistencia dual SQLite/PostgreSQL sin ORM
+# ADR-004: Persistencia PostgreSQL y runtime de contenedores
 
 - **Estado**: Aceptado
 - **Fecha**: 2026-11-23

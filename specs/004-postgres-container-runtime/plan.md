@@ -7,7 +7,7 @@
 
 **Entrada**: Especificación `specs/004-postgres-container-runtime/spec.md`: preparar IncidentOps
 para ejecutarse en contenedores con una base PostgreSQL dedicada y un chequeo real de conectividad,
-sin romper la ruta local sin infraestructura ni la paridad REST/CLI. Respaldada por ADR-007, ADR-008
+sin romper la ruta local sin infraestructura ni la paridad REST/CLI. Respaldada por ADR-004, ADR-008
 y la Constitución §III–§VI.
 
 > Nota de rama: `setup-plan.ps1` informó `BRANCH=004-postgres-container-runtime`, pero la rama
@@ -38,7 +38,7 @@ idempotente de `sla_policies`, nunca a `incidents`.
 `python:3.12-slim`, gestionada con `uv`, `[tool.uv] package = false` e imports absolutos desde la raíz.
 
 **Dependencias principales**: FastAPI + Pydantic v2 (REST), Typer (CLI), Uvicorn (servidor),
-`sqlite3` de la biblioteca estándar y `psycopg[binary]` (ADR-007). Sin ORM, sin Alembic, sin
+`sqlite3` de la biblioteca estándar y `psycopg[binary]` (ADR-004). Sin ORM, sin Alembic, sin
 `psycopg2`, sin pooler y sin PyYAML. `psycopg[binary]` ya figura en `pyproject.toml` y `uv.lock` del
 árbol de trabajo; `httpx`, `pytest` y `ruff` siguen en el grupo `dev`.
 
@@ -84,7 +84,7 @@ severidades, 2 estados activos; una capacidad nueva (salud) × 2 canales; dos mo
 Requiere una enmienda PATCH de la Constitución (**1.2.0 → 1.2.1**) para acotar explícitamente la
 prohibición de `REPLACE`/`UPSERT`/`ON CONFLICT DO UPDATE` a la ruta de alta de `incidents` y dejar
 fuera la siembra idempotente de `sla_policies`. La enmienda se tramita en un PR separado y no cambia
-obligaciones de negocio. ADR-007 ya autoriza el adaptador PostgreSQL y ADR-008 la topología Compose;
+obligaciones de negocio. ADR-004 ya autoriza el adaptador PostgreSQL y ADR-008 la topología Compose;
 el Principio IV ya declara `check_health` en el puerto, por lo que H004 solo añade el caso de uso y
 los adaptadores.
 
@@ -94,14 +94,14 @@ los adaptadores.
 | II. Dominio puro y auditable | PASS | Sin imports nuevos ni reloj/E/S en el dominio. La salud no entra en `src/domain/`; es conectividad de infraestructura. |
 | III. Arquitectura hexagonal estricta | PASS | `PostgresIncidentRepository` vive en `outbound/`; la aplicación solo delega `check_health`; el inbound solo traduce a HTTP/CLI. Ningún adaptador importa otro adaptador concreto. |
 | IV. Puertos explícitos y composición única | PASS | `IncidentRepositoryPort.check_health() -> bool` ya existe y no cambia de firma. `factory.create_repository` es el único punto que interpreta `DATABASE_URL`, instancia SQLite o PostgreSQL e inyecta `SystemClock`. |
-| V. Stack gobernado | PASS | `psycopg[binary]` está aprobado por ADR-007 y la Constitución §V; Docker Compose por ADR-008. No se añaden ORM, migrador, pooler ni lector YAML. |
+| V. Stack gobernado | PASS | `psycopg[binary]` está aprobado por ADR-004 y la Constitución §V; Docker Compose por ADR-008. No se añaden ORM, migrador, pooler ni lector YAML. |
 | VI. Fronteras verificadas con Ruff | PASS | Se añaden `psycopg`, `psycopg2` y `src.adapters.outbound.postgres_repository` a las prohibiciones de `inbound/` y de `inbound/api/`. Dominio y aplicación ya los prohíben. `uv run ruff check src/` debe pasar sin `noqa` nuevos. |
 | VII. BDD y pruebas ejecutables | PASS | `tests/test_spec_004_runtime_health.py` cubre E-01…E-06 con dobles; `tests/adapters/test_factory.py` y `tests/contract/test_repository_contract.py` cubren la matriz de DSN y la paridad. Sin `sleep` en pruebas de dominio. |
-| Contrato de persistencia entre motores | PASS con precisión | La ruta de alta usa `INSERT` estricto y traduce `UniqueViolation` a `IncidentAlreadyExistsError`. `ON CONFLICT DO UPDATE` se usa **solo** en la siembra idempotente de `sla_policies`, que no es la ruta de alta (equivale al `INSERT OR REPLACE` de siembra de SQLite) y queda fuera de la prohibición tras la aclaración 1.2.1 de la Constitución (ADR-007 §3e). Ver [research.md](./research.md) D5. |
+| Contrato de persistencia entre motores | PASS con precisión | La ruta de alta usa `INSERT` estricto y traduce `UniqueViolation` a `IncidentAlreadyExistsError`. `ON CONFLICT DO UPDATE` se usa **solo** en la siembra idempotente de `sla_policies`, que no es la ruta de alta (equivale al `INSERT OR REPLACE` de siembra de SQLite) y queda fuera de la prohibición tras la aclaración 1.2.1 de la Constitución (ADR-004 §3e). Ver [research.md](./research.md) D5. |
 | Invariantes de SLA | PASS | No se tocan la política, el 75 %, la ventana hábil ni el incumplimiento estricto. El adaptador no calcula SLA. |
 | Estados del incidente | PASS | Sin cambios; el adaptador PostgreSQL valida los mismos estados y `resolved_at` en terminales. |
 | Deuda deliberada | PASS | Los festivos siguen sin descontarse (ADR-002); `legacy/triage_rules.py` sigue congelado; no se reintroduce deuda de H002; `CONTEXT_LOG.md` no se reescribe. |
-| Gobernanza documental | PASS | No hace falta ADR nuevo: ADR-007 y ADR-008 ya registran las decisiones. La aclaración PATCH 1.2.1 de la Constitución se tramita en un PR separado. Se actualizan `AGENTS.md`, `README.md` y `docs/ROADMAP.md` (H004 → entregado) en el mismo PR. |
+| Gobernanza documental | PASS | No hace falta ADR nuevo: ADR-004 y ADR-008 ya registran las decisiones. La aclaración PATCH 1.2.1 de la Constitución se tramita en un PR separado. Se actualizan `AGENTS.md`, `README.md` y `docs/ROADMAP.md` (H004 → entregado) en el mismo PR. |
 
 **Reevaluación tras el diseño de la Fase 1**: se mantiene. Los contratos nuevos (salud y DSN) no
 introducen capas ni tipos de dominio paralelos; `inbound/health_contract.py` es un contrato de
@@ -175,7 +175,7 @@ docs/ROADMAP.md, AGENTS.md, README.md  # MODIFICADOS · H004, comandos, salud y 
 aplicación gana un caso de uso de delegación. El inbound comparte `health_contract.py` entre HTTP y
 CLI porque la frontera prohíbe que el CLI importe `api/`; `HealthResponse` se usa como
 `response_model` en `api/app.py`, que es el punto donde la spec la ubica funcionalmente. El outbound
-concentra DDL, SQL, siembra y mapeo de ambos motores, sin que uno importe al otro (ADR-007 §4). La
+concentra DDL, SQL, siembra y mapeo de ambos motores, sin que uno importe al otro (ADR-004 §4). La
 raíz aloja el empaquetado y el despliegue de referencia.
 
 ## Fase 0 · Investigación
@@ -187,9 +187,9 @@ Salida: [research.md](./research.md). No quedan `NEEDS CLARIFICATION`. Resumen d
 | D1 | `HealthResponse` y `to_health_response` en `inbound/health_contract.py` | Paridad HTTP/CLI sin que el CLI importe `api/` (FR-003, SC-003) |
 | D2 | `IncidentService.check_health()` delega en el puerto sin capturar | FR-004; la no-excepción es obligación del adaptador (FR-005) |
 | D3 | Conexión PostgreSQL por operación, esquema perezoso y `connect_timeout=2` | Arranque tolerante, recuperación sin reinicio y 503 acotado (FR-010/FR-011, RNF-002) |
-| D4 | Fábrica distingue ausencia de vacío; `postgres://` rechazado | FR-006/SC-007 y ADR-007; sin fallback silencioso |
+| D4 | Fábrica distingue ausencia de vacío; `postgres://` rechazado | FR-006/SC-007 y ADR-004; sin fallback silencioso |
 | D5 | `ON CONFLICT DO UPDATE` solo en siembra de políticas; `INSERT` estricto en alta | Idempotencia equivalente a SQLite sin violar la prohibición de UPSERT en alta |
-| D6 | Mapeo y validación duplicados dentro del adaptador PostgreSQL | ADR-007 §4 acepta dos DDL/mapeos; prohibido importar otro adaptador |
+| D6 | Mapeo y validación duplicados dentro del adaptador PostgreSQL | ADR-004 §4 acepta dos DDL/mapeos; prohibido importar otro adaptador |
 | D7 | Microsegundos en ambos motores | FR-009 y contrato de persistencia de la Constitución |
 | D8 | `JSONResponse` 200/503 con `Cache-Control: no-store` | Cuerpos exactos, nunca 500 y sin caché (FR-001/FR-002) |
 | D9 | `health` sale 0/1; configuración inválida sale 2 con `CONFIG_DATABASE_URL_INVALIDA` | FR-003/FR-018 y separación stdout/stderr |
@@ -279,7 +279,7 @@ Puntos contractuales fijados:
 
 | Desviación | Por qué se necesita | Alternativa más simple rechazada |
 |---|---|---|
-| Dos DDL, dos mapeos y dos juegos de consultas | ADR-007 §4 los acepta explícitamente para no acoplar adaptadores; la paridad se prueba con contrato | Adaptador único multipropósito o importar SQLite desde PostgreSQL: acopla adaptadores y oculta el dialecto |
+| Dos DDL, dos mapeos y dos juegos de consultas | ADR-004 §4 los acepta explícitamente para no acoplar adaptadores; la paridad se prueba con contrato | Adaptador único multipropósito o importar SQLite desde PostgreSQL: acopla adaptadores y oculta el dialecto |
 | Conexión PostgreSQL por operación en lugar de conexión persistente | Arranque tolerante, recuperación sin reinicio y salud honesta sin lógica de reconexión | Pooler o conexión compartida: dependencia y estado compartido fuera de alcance |
 | `ON CONFLICT DO UPDATE` en `sla_policies` | Idempotencia equivalente al `INSERT OR REPLACE` de siembra de SQLite | `DO NOTHING`: no actualizaría políticas cambiadas; UPSERT en `incidents`: prohibido |
 | Normalizar microsegundos también en SQLite | FR-009 y el contrato de persistencia exigen el mismo formato en ambos motores | Dejar SQLite sin microsegundos: divergencia real entre motores |
@@ -322,5 +322,5 @@ Puntos contractuales fijados:
   benchmark de 10 000 incidentes sin regresión e imagen ≤ 400 MB.
 - Una prueba de regresión demuestra que triaje, resumen, alta y SLA mantienen el error genérico
   (500 HTTP / salida 1) con el motor caído, sin códigos nuevos.
-- `README.md`, `AGENTS.md` y `docs/ROADMAP.md` actualizados; ADR-007/ADR-008 no requieren enmienda y
+- `README.md`, `AGENTS.md` y `docs/ROADMAP.md` actualizados; ADR-004/ADR-008 no requieren enmienda y
   la aclaración 1.2.1 de la Constitución se tramita en PR separado.

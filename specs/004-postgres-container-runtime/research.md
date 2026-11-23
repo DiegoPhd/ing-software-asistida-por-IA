@@ -4,7 +4,7 @@
 
 No quedan incógnitas `NEEDS CLARIFICATION`. Las diez clarificaciones de la spec se toman como
 cerradas y las decisiones siguientes resuelven solo los puntos técnicos que el plan necesita antes de
-diseñar. La investigación se apoya en ADR-007 (persistencia dual sin ORM), ADR-008 (topología
+diseñar. La investigación se apoya en ADR-004 (persistencia dual sin ORM), ADR-008 (topología
 Compose) y la Constitución §III–§VI, no en documentación externa nueva.
 
 ## D1 · Contrato de salud compartido y ubicación de `HealthResponse`
@@ -82,10 +82,10 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   `resolve_database_path` se conserva como helper exclusivo de SQLite y aplica la misma regla de
   vacío. Los mensajes de error incluyen solo el esquema, nunca usuario, contraseña ni host.
 - **Razón**: FR-006 y SC-007 exigen que un despliegue incompleto falle de forma explícita y no caiga
-  a memoria en silencio; ADR-007 rechaza el alias `postgres://`. La lectura única en la fábrica
+  a memoria en silencio; ADR-004 rechaza el alias `postgres://`. La lectura única en la fábrica
   mantiene el Principio IV y FR-007.
 - **Alternativas consideradas**: (a) tratar `""` como ausencia: pierde datos en silencio, justo lo
-  que la clarificación prohíbe; (b) aceptar `postgres://`: contradice ADR-007; (c) seleccionar el
+  que la clarificación prohíbe; (b) aceptar `postgres://`: contradice ADR-004; (c) seleccionar el
   motor en cada adaptador de entrada: duplicaría la interpretación del DSN. Se descartan.
 - **Impacto en pruebas existentes**: `resolve_database_path("")` y
   `create_repository("postgresql://…")` cambian de resultado; las pruebas de H002 se actualizan para
@@ -100,7 +100,7 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   a `IncidentAlreadyExistsError`. No existe ningún `UPSERT` sobre `incidents`.
 - **Razón**: el adaptador SQLite ya siembra políticas con `INSERT OR REPLACE`, que no es la ruta de
   negocio; su equivalente semántico en PostgreSQL es `ON CONFLICT DO UPDATE`. La Constitución
-  (aclaración 1.2.1) y ADR-007 prohíben `REPLACE`, `UPSERT` y `ON CONFLICT DO UPDATE` **en la ruta de
+  (aclaración 1.2.1) y ADR-004 prohíben `REPLACE`, `UPSERT` y `ON CONFLICT DO UPDATE` **en la ruta de
   alta** para impedir sobrescrituras silenciosas; la siembra de políticas queda fuera de esa ruta,
   igual que la siembra sintética del benchmark. Esta lectura se documenta aquí y se cubre con una
   prueba de conflicto que verifica que el incidente previo no se modifica.
@@ -109,7 +109,7 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   dos sentencias y una ventana sin política; (c) pre-consultar y decidir en Python: carrera y más
   viajes. Se descartan.
 - **Trazabilidad**: la decisión requiere la aclaración PATCH 1.2.1 de la Constitución (PR separado) y
-  no modifica ADR-007; se registra aquí y en el PR.
+  no modifica ADR-004; se registra aquí y en el PR.
 
 ## D6 · Mapeo fila → entidad, validación y duplicación deliberada
 
@@ -117,13 +117,13 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   `dict_row → Incident` dentro de su propio módulo, sin importar
   `src.adapters.outbound.sqlite_repository`. Usa `dict_row`, columnas explícitas y
   `datetime.fromisoformat`; no ordena resultados ni calcula SLA, similitud ni claves de grupo.
-- **Razón**: ADR-007 §4 acepta explícitamente "dos DDL, dos mapeos y dos juegos de consultas" y
+- **Razón**: ADR-004 §4 acepta explícitamente "dos DDL, dos mapeos y dos juegos de consultas" y
   prohíbe que un adaptador importe a otro para reutilizar lógica. La paridad se demuestra con la
   suite de contrato, no acoplando implementaciones. El Principio I impide además que el adaptador
   redeclare reglas de dominio: la validación replica invariantes del modelo ya existentes, no reglas
   nuevas.
 - **Alternativas consideradas**: (a) extraer un módulo común `outbound/incident_rows.py`: reduce
-  duplicación, pero introduce un acoplamiento que ADR-007 no contempla y amplía el alcance del hito;
+  duplicación, pero introduce un acoplamiento que ADR-004 no contempla y amplía el alcance del hito;
   (b) mapear en la aplicación: viola el Principio III. Se descartan.
 - **Columnas explícitas**: se reutiliza el mismo conjunto de diez columnas que SQLite
   (`incident_id, title, component, severity, status, created_at, resolved_at, raw_text,

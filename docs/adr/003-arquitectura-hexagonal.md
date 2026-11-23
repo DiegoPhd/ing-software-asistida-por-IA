@@ -1,6 +1,6 @@
 # ADR-003: Adopción de Arquitectura Hexagonal (Puertos y Adaptadores) para IncidentOps
 
-- **Estado**: Aceptado · enmendado por ADR-004 (CLI con Typer y REST desde H001)
+- **Estado**: Aceptado · enmendado por ADR-009 (CLI con Typer y REST desde H001)
 - **Fecha**: 2026-11-22
 - **Autor(es)**: Equipo de Ingeniería IncidentOps
 - **Reemplaza a**: *(ninguno)*
@@ -122,9 +122,9 @@ El diagrama fija topología y fronteras: las flechas continuas son dependencias 
 
 ---
 
-## 5. Nota de enmienda (ADR-004)
+## 5. Nota de enmienda (ADR-009)
 
 Este ADR describía la CLI con `argparse` y situaba el adaptador REST en H002. La
 Constitución §2.3 y §3.1 fijan Typer y FastAPI + Pydantic v2, y H001 exige ambas
-interfaces. `ADR-004` concreta el contrato de interfaces y prevalece en esos dos
+interfaces. `ADR-009` concreta el contrato de interfaces y prevalece en esos dos
 puntos; la topología y la regla de dependencia de este ADR siguen vigentes.
