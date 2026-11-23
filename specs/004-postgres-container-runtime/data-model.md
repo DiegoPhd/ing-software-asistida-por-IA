@@ -46,7 +46,7 @@ fijan en [contracts/health.schema.json](./contracts/health.schema.json).
 | `get_incident(incident_id) -> Incident \| None` | `SELECT` con columnas explícitas; `None` si no existe |
 | `find_open_duplicates(incident) -> Sequence[Incident]` | Solo activos, mismo componente, distinto identificador; sin similitud, sin ventana y sin orden |
 | `list_active_incidents(component_filter) -> Sequence[Incident]` | Activos con `INNER JOIN sla_policies`; dos variantes SQL (con y sin filtro) para no degradar el índice; sin SLA y sin orden |
-| `check_health() -> bool` | `SELECT 1` con espera de conexión ≤ 2 s; `True` solo si hay fila; cualquier error de conexión, autenticación o tiempo → `False`; nunca lanza y nunca ejecuta DDL |
+| `check_health() -> bool` | `SELECT 1` con un plazo total ≤ 2 s (resolución DNS incluida); `True` solo si hay fila; cualquier error de conexión, autenticación o tiempo → `False`; nunca lanza y nunca ejecuta DDL |
 
 La validación de invariantes de escritura (`incident_id` y `component` no vacíos, severidad con
 política, estado conocido, fechas naive, terminal con `resolved_at`, equipo del catálogo) se replica

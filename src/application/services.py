@@ -139,6 +139,19 @@ class IncidentService:
         self._component_locks: Dict[str, threading.Lock] = {}
 
     # ------------------------------------------------------------------
+    # H004 · Salud del servicio
+    # ------------------------------------------------------------------
+
+    def check_health(self) -> bool:
+        """Delega la conectividad en el puerto sin capturar excepciones.
+
+        El adaptador es responsable de no lanzar y de devolver `False` ante
+        cualquier fallo; capturar aquí ocultaría un adaptador que incumple el
+        puerto (FR-004/FR-005).
+        """
+        return self._repository.check_health()
+
+    # ------------------------------------------------------------------
     # Casos de uso de H001 y H002
     # ------------------------------------------------------------------
 

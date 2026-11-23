@@ -59,6 +59,11 @@ Compose) y la Constitución §III–§VI, no en documentación externa nueva.
   contradice el arranque tolerante exigido. Se descartan.
 - **Consecuencia**: la construcción del repositorio no requiere un servidor vivo, lo que permite
   probar `create_repository("postgresql://…")` y el cumplimiento del puerto sin Docker.
+- **Refinamiento tras la validación con Compose (T030)**: `connect_timeout=2` no acota la resolución
+  DNS; con el contenedor `db` detenido, el nombre tarda ~3,9 s en fallar y el 503 superaba el
+  presupuesto de 3 s de RNF-002. `check_health` impone ahora un **plazo total de 2 s** con un hilo de
+  trabajo (`TIEMPO_DE_COMPROBACION_SEGUNDOS`): si el resultado no llega, informa `False` sin lanzar.
+  Medición final: 503 en 2,01 s y recuperación en 0,5 s sin reiniciar la API.
 
 ## D4 · Selección por `DATABASE_URL`: ausencia, vacío y alias
 

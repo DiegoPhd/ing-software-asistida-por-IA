@@ -1,0 +1,28 @@
+# Contexto de build mínimo y reproducible: sin secretos, VCS, entornos
+# virtuales, cachés, pruebas, especificaciones, documentación ni bases locales.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.opencode
+.specify
+.idea
+.vscode
+tests/
+specs/
+docs/
+data/
+legacy/
+tools/
+*.db
+*.log
+CONTEXT_LOG.md
+SDD_LOG.md

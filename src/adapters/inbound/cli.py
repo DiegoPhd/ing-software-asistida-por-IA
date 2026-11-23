@@ -1,4 +1,4 @@
-"""Subcomandos `triage`, `summary`, `create` y `sla` del adaptador CLI.
+"""Subcomandos `triage`, `summary`, `create`, `sla` y `health` del adaptador CLI.
 
 Traduce terminal a caso de uso y formatea el resultado como JSON; no clasifica,
 no calcula SLA, no decide equivalencias ni importa el adaptador HTTP.
@@ -12,6 +12,7 @@ from typing import Optional, Tuple
 
 import typer
 
+from src.adapters.inbound.health_contract import to_health_response
 from src.adapters.inbound.lifecycle_contract import (
     to_incident_created_response,
     to_sla_evaluation_response,
@@ -22,7 +23,7 @@ from src.adapters.inbound.summary_contract import (
     to_summary_response,
 )
 from src.adapters.inbound.temporal_contract import parse_instante_naive
-from src.adapters.outbound.factory import build_incident_service
+from src.adapters.outbound.factory import ConfigurationError, build_incident_service
 from src.application.services import (
     CREATE_CREACION_INVALIDA,
     CREATE_ERROR_INTERNO,
@@ -38,6 +39,9 @@ from src.application.services import (
 TRIAGE_FUENTE_TEXTO_INVALIDA = "TRIAGE_FUENTE_TEXTO_INVALIDA"
 TRIAGE_ARCHIVO_INVALIDO = "TRIAGE_ARCHIVO_INVALIDO"
 TRIAGE_ID_CONFLICTO = "TRIAGE_ID_CONFLICTO"
+
+CONFIG_DATABASE_URL_INVALIDA = "CONFIG_DATABASE_URL_INVALIDA"
+HEALTH_ERROR_INTERNO = "HEALTH_ERROR_INTERNO"
 
 app = typer.Typer(
     add_completion=False,
@@ -281,6 +285,48 @@ def create(
 
     documento = to_incident_created_response(resultado).model_dump(mode="json")
     typer.echo(json.dumps(documento, ensure_ascii=False, indent=2))
+
+
+@app.command("health")
+def health() -> None:
+    """Comprueba la conectividad real y escribe el documento de salud en stdout.
+
+    Sale 0 si la base responde y 1 si no; la configuración inválida sale 2 con
+    `problem+json` en stderr, sin documento ni traza (FR-003/FR-018).
+    """
+    try:
+        servicio = build_incident_service()
+    except ConfigurationError as exc:
+        _emitir_error(
+            CONFIG_DATABASE_URL_INVALIDA,
+            "DATABASE_URL",
+            str(exc),
+            status=422,
+        )
+        raise typer.Exit(2)
+    except Exception:
+        _emitir_error(
+            HEALTH_ERROR_INTERNO,
+            "health",
+            "No fue posible construir el servicio de salud.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    try:
+        documento = to_health_response(servicio.check_health())
+    except Exception:
+        _emitir_error(
+            HEALTH_ERROR_INTERNO,
+            "health",
+            "No fue posible comprobar la conectividad del servicio.",
+            status=500,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(json.dumps(documento.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    if documento.status != "ok":
+        raise typer.Exit(1)
 
 
 @app.command("sla")

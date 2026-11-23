@@ -38,6 +38,8 @@ _TITULOS: Dict[str, str] = {
     "SLA_DATOS_INCONSISTENTES": "Datos del incidente incoherentes",
     "SLA_INCIDENTE_NO_ENCONTRADO": "Incidente no encontrado",
     "SLA_ERROR_INTERNO": "Error interno al auditar el SLA",
+    "CONFIG_DATABASE_URL_INVALIDA": "Configuración de base de datos inválida",
+    "HEALTH_ERROR_INTERNO": "Error interno al comprobar la salud",
 }
 
 

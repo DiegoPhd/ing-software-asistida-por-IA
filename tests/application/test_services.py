@@ -422,3 +422,43 @@ def test_datos_incoherentes_son_409(incidente: Incident) -> None:
 
     assert excinfo.value.code == SLA_DATOS_INCONSISTENTES
     assert excinfo.value.status == 409
+
+
+# ---------------------------------------------------------------------------
+# H004 · Salud del servicio
+# ---------------------------------------------------------------------------
+
+
+class _RepositorioConSalud:
+    """Doble del puerto que registra cuántas veces se consulta la salud."""
+
+    def __init__(self, conectado: bool) -> None:
+        self.conectado = conectado
+        self.consultas = 0
+
+    def save_incident(self, incident: Incident) -> None:
+        return None
+
+    def get_incident(self, incident_id: str) -> Optional[Incident]:
+        return None
+
+    def find_open_duplicates(self, incident: Incident) -> Sequence[Incident]:
+        return []
+
+    def list_active_incidents(
+        self, component_filter: Optional[str]
+    ) -> Sequence[Incident]:
+        return []
+
+    def check_health(self) -> bool:
+        self.consultas += 1
+        return self.conectado
+
+
+@pytest.mark.parametrize("conectado", [True, False])
+def test_el_caso_de_uso_de_salud_delega_en_el_puerto(conectado: bool) -> None:
+    """FR-004: `IncidentService.check_health` solo delega y no reinterpreta."""
+    repositorio = _RepositorioConSalud(conectado)
+
+    assert IncidentService(repositorio).check_health() is conectado
+    assert repositorio.consultas == 1

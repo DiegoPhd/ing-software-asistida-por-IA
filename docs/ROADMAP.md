@@ -51,7 +51,7 @@ abierto y auditar su SLA en cualquier instante de referencia.
   `factory.py`; la persistencia usa `INSERT` estricto, migración idempotente e
   `idx_incidents_dup_key`. Evidencia en [ADR-006](adr/006-ciclo-vida-duplicados-sla.md).
 
-## H004 · Persistencia relacional dedicada y runtime en contenedores
+## H004 · Persistencia relacional dedicada y runtime en contenedores — **Entregado (2026-11-23)**
 
 Preparar el servicio para ejecución reproducible en contenedores, con base de datos relacional
 dedicada y verificación real de conectividad operativa.
@@ -59,6 +59,16 @@ dedicada y verificación real de conectividad operativa.
 - **Valor**: entorno reproducible y dependencia de datos explícita y verificable.
 - **Listo cuando**: el servicio arranca en contenedor y confirma conectividad efectiva con su base
   de datos dedicada.
+- **Entregado**: `GET /health` y `cli health` comparten `inbound/health_contract.py` y
+  `IncidentService.check_health`; `src/adapters/outbound/postgres_repository.py` implementa el
+  puerto completo con `psycopg`, DDL idempotente y `INSERT` estricto; `factory.py` selecciona
+  SQLite o PostgreSQL por `DATABASE_URL` y distingue ausencia de vacío. El despliegue de referencia
+  vive en `Dockerfile`, `docker-compose.yml`, `.dockerignore` y `.env.example`, y se verifica con
+  `tools/verify_runtime.py --compose --resiliencia`. Evidencia en
+  [ADR-007](adr/007-persistencia-postgresql-sin-orm.md) y
+  [ADR-008](adr/008-runtime-contenedores-docker-compose.md).
+- **Deuda deliberada**: el bloqueo por componente sigue siendo de proceso; no hay migraciones
+  versionadas ni pooler y los datos SQLite no se migran automáticamente.
 
 ---
 

@@ -7,6 +7,7 @@ from typing import List, Optional, Set
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.adapters.inbound.api.errors import (
@@ -19,6 +20,7 @@ from src.adapters.inbound.api.errors import (
     manejar_validacion_de_esquema,
 )
 from src.adapters.inbound.api.schemas import TriageRequest, TriageResponse
+from src.adapters.inbound.health_contract import HealthResponse, to_health_response
 from src.adapters.inbound.lifecycle_contract import (
     CreateIncidentRequest,
     IncidentCreatedResponse,
@@ -83,7 +85,7 @@ def _rechazar_parametros(
 
 def create_app(service: Optional[IncidentService] = None) -> FastAPI:
     """Construye la aplicación inyectando el caso de uso compartido."""
-    aplicacion = FastAPI(title=TITULO, version="0.3.0")
+    aplicacion = FastAPI(title=TITULO, version="0.4.0")
     caso_de_uso = service or build_incident_service()
 
     origenes = _origenes_cors()
@@ -113,10 +115,30 @@ def create_app(service: Optional[IncidentService] = None) -> FastAPI:
     aplicacion.add_exception_handler(StarletteHTTPException, manejar_http_exception)
     aplicacion.add_exception_handler(Exception, manejar_error_inesperado)
 
-    @aplicacion.get("/health")
-    def health() -> dict:
-        """Señal de vida del servicio."""
-        return {"status": "ok"}
+    @aplicacion.get(
+        "/health",
+        response_model=HealthResponse,
+        responses={
+            503: {
+                "model": HealthResponse,
+                "description": "La base de datos configurada no responde.",
+            }
+        },
+    )
+    def health() -> JSONResponse:
+        """Comprueba la conectividad real con la base en cada petición.
+
+        Devuelve 200 o 503 con el documento compartido; nunca 500 por una caída
+        y nunca cachea el resultado (FR-001/FR-002).
+        """
+        documento = to_health_response(caso_de_uso.check_health())
+        estado = 200 if documento.status == "ok" else 503
+        return JSONResponse(
+            content=documento.model_dump(mode="json"),
+            status_code=estado,
+            media_type="application/json",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @aplicacion.post(
         "/api/v1/incidents/triage",

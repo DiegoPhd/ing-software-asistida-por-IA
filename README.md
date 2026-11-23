@@ -1,6 +1,6 @@
 # IncidentOps — Proyecto Semilla (Semana 1)
 
-**IncidentOps** es un sistema backend en Python gestionado con [`uv`](https://docs.astral.sh/uv/) que administra reportes de incidentes de software, evalúa acuerdos de nivel de servicio (**SLA**) sobre SQLite y ejecuta reglas de **triaje y enrutamiento de tickets**.
+**IncidentOps** es un sistema backend en Python gestionado con [`uv`](https://docs.astral.sh/uv/) que administra reportes de incidentes de software, evalúa acuerdos de nivel de servicio (**SLA**) sobre SQLite o PostgreSQL y ejecuta reglas de **triaje y enrutamiento de tickets**.
 
 Este repositorio sirve como banco de pruebas práctico para la **Semana 1** de *Ingeniería de Software Asistida por Inteligencia Artificial (ISIA)* bajo un enfoque **100% *AI for Software Engineering***.
 
@@ -9,9 +9,11 @@ Este repositorio sirve como banco de pruebas práctico para la **Semana 1** de *
 ## Requisitos e Instalación con `uv`
 
 - **Python 3.10+** y **[`uv`](https://docs.astral.sh/uv/)**.
+- **Docker + Compose v2** solo para el despliegue de referencia de H004.
 - Dependencias declaradas en [`pyproject.toml`](pyproject.toml):
   - `fastapi` + `pydantic` v2: canal HTTP.
   - `typer`: canal de consola.
+  - `psycopg[binary]`: adaptador PostgreSQL sin ORM (H004).
   - `tiktoken`: medición de tokens BPE (`o200k_base` / `cl100k_base`) en las estrategias de contexto.
 
 ```bash
@@ -35,8 +37,8 @@ src/
 │   ├── ports.py            # IncidentRepositoryPort y ClockPort (Protocol)
 │   └── services.py         # IncidentService: triaje, alta, resumen y SLA
 └── adapters/
-    ├── inbound/            # api/app.py · cli.py · contracts · problem.py
-    └── outbound/           # sqlite_repository.py · system_clock.py · factory.py
+    ├── inbound/            # api/app.py · cli.py · health_contract · problem.py
+    └── outbound/           # sqlite_repository.py · postgres_repository.py · factory.py
 ```
 
 - Los adaptadores de entrada solo conocen el caso de uso, el contrato de
@@ -50,8 +52,10 @@ src/
 - Decisiones: [ADR-002](docs/adr/002-calculo-sla-horario-habil.md),
   [ADR-003](docs/adr/003-arquitectura-hexagonal.md),
   [ADR-004](docs/adr/004-contrato-interfaces-h001.md),
-  [ADR-005](docs/adr/005-resumen-activos-hexagonal.md) y
-  [ADR-006](docs/adr/006-ciclo-vida-duplicados-sla.md).
+  [ADR-005](docs/adr/005-resumen-activos-hexagonal.md),
+  [ADR-006](docs/adr/006-ciclo-vida-duplicados-sla.md),
+  [ADR-007](docs/adr/007-persistencia-postgresql-sin-orm.md) y
+  [ADR-008](docs/adr/008-runtime-contenedores-docker-compose.md).
 
 ---
 
@@ -119,7 +123,9 @@ SQLite resuelve una sola consulta con `INNER JOIN sla_policies` e índice
 | ausente | Base SQLite en memoria, privada por repositorio |
 | `sqlite:///:memory:` | Base SQLite en memoria |
 | `sqlite:///ruta/incidentops.db` | Archivo relativo o absoluto |
-| Otro esquema | Error de configuración; no se intenta abrir |
+| `postgresql://usuario:clave@host:5432/base` | PostgreSQL dedicado (H004) |
+| vacía o solo espacios | Error de configuración; nunca cae a memoria |
+| `postgres://…` u otro esquema | Error de configuración; no se intenta abrir |
 
 ```powershell
 $env:DATABASE_URL = "sqlite:///resumen-demo.db"
@@ -241,19 +247,83 @@ Contratos y guía de validación:
 
 ---
 
-## 5. Pruebas, fronteras y rendimiento
+## 5. H004 · Runtime PostgreSQL en contenedores
+
+Añade un adaptador PostgreSQL (`psycopg[binary]`, sin ORM), la selección de motor
+por `DATABASE_URL`, una salud real por petición con paridad HTTP/CLI y el
+despliegue de referencia con Docker Compose (ADR-007 y ADR-008).
+
+### Salud del servicio
+
+```bash
+uv run python -m src.adapters.inbound.cli health   # 0 conectado / 1 no disponible
+curl -i http://127.0.0.1:8000/health               # 200 / 503
+docker compose exec api python -m src.adapters.inbound.cli health
+```
+
+| Estado | HTTP | Cuerpo exacto | CLI |
+|---|---|---|---|
+| Conectado | 200 | `{"status": "ok", "database": "connected"}` | mismo JSON, salida 0 |
+| No disponible | 503 | `{"status": "error", "database": "unavailable"}` | mismo JSON, salida 1 |
+| Configuración inválida | — | — | `CONFIG_DATABASE_URL_INVALIDA` en stderr, salida 2 |
+
+La salud se evalúa en cada petición (`SELECT 1`), con `Cache-Control: no-store`,
+sin caché y sin DDL; nunca responde 500 por una caída. Una configuración de motor
+inválida (vacía, `postgres://` u otro esquema) impide arrancar la API y no cae a
+memoria.
+
+### Despliegue de referencia
+
+```bash
+docker compose up -d --build --wait
+curl -i http://127.0.0.1:8000/health
+docker compose ps
+docker compose stop db      # /health → 503; la API sigue en ejecución
+docker compose start db     # /health → 200 en ≤ 5 s, sin reiniciar la API
+docker compose down         # conserva el volumen incidentops_pgdata
+docker compose down -v      # eliminación explícita de los datos
+```
+
+- `db`: `postgres:16-alpine`, volumen nombrado `incidentops_pgdata` sobre
+  `PGDATA`, healthcheck `pg_isready` y sin puertos publicados al host.
+- `api`: build desde `Dockerfile` multietapa (`python:3.12-slim`, `uv sync
+  --frozen --no-dev`, usuario UID/GID 10001), `depends_on: service_healthy`,
+  healthcheck sobre `/health` y una sola réplica.
+- Credenciales por entorno con marcadores en `.env.example`; `.env` está
+  ignorado por Git y una contraseña con caracteres especiales debe codificarse
+  para URL.
+- Verificación automatizada: `uv run python tools/verify_runtime.py --compose
+  --resiliencia` (arranque ordenado, 200 → 503 → 200, persistencia y latencias).
+
+Contratos y guía de validación:
+[`specs/004-postgres-container-runtime/`](specs/004-postgres-container-runtime/).
+
+---
+
+## 6. Pruebas, fronteras y rendimiento
 
 ```bash
 uv run pytest -v
 uv run ruff check src/
 ```
 
-La suite cubre H001, H002 y H003: escenarios BDD de cada especificación, fronteras
-de SLA y de similitud en `tests/domain/`, alta, auditoría y duplicados en
-`tests/application/test_services.py`, migración, conflicto e índice en
-`tests/adapters/test_sqlite_repository.py`, y paridad HTTP/CLI en
-`tests/test_spec_002_summary.py`, `tests/adapters/test_api.py`,
-`tests/adapters/test_cli.py` y `tests/test_spec_003_lifecycle_sla.py`.
+La suite cubre H001, H002, H003 y H004: escenarios BDD de cada especificación,
+fronteras de SLA y de similitud en `tests/domain/`, alta, auditoría, duplicados y
+salud en `tests/application/test_services.py`, migración, conflicto, índice y
+microsegundos en `tests/adapters/test_sqlite_repository.py`, la matriz de
+`DATABASE_URL` en `tests/adapters/test_factory.py`, la paridad de motores en
+`tests/contract/test_repository_contract.py` (PostgreSQL se omite sin
+`TEST_POSTGRES_URL`) y la salud HTTP/CLI en
+`tests/test_spec_004_runtime_health.py`, `tests/adapters/test_api.py`,
+`tests/adapters/test_cli.py`, `tests/test_spec_002_summary.py` y
+`tests/test_spec_003_lifecycle_sla.py`.
+
+Prueba de contrato contra PostgreSQL real (opcional, fuera de la suite base):
+
+```bash
+export TEST_POSTGRES_URL="postgresql://incidentops:incidentops_local@127.0.0.1:5432/incidentops"
+uv run pytest -q tests/contract/test_repository_contract.py
+```
 
 Benchmarks (no forman parte de `pytest` y no hacen aserciones de tiempo):
 
@@ -271,11 +341,11 @@ evidencia: no se importa, no se modifica y no es fuente de verdad.
 
 ---
 
-## 6. Governanza documental
+## 7. Governanza documental
 
 - Constitución técnica: [`docs/constitution.md`](docs/constitution.md) y
   [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (versión
-  **1.1.0**).
+  **1.2.1**).
 - Hoja de ruta: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - ADR: [`docs/adr/`](docs/adr/).
 - Guía operativa para agentes: [`AGENTS.md`](AGENTS.md).

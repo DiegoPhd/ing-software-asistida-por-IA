@@ -177,7 +177,14 @@ def test_migra_raw_text_en_bases_heredadas(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "url",
-    ["postgresql://localhost/incidentops", "mysql://localhost/incidentops", "sqlite://"],
+    [
+        pytest.param("mysql://localhost/incidentops", id="mysql"),
+        pytest.param("sqlite://", id="sqlite-sin-ruta"),
+        pytest.param("sqlite:///", id="sqlite-sin-archivo"),
+        pytest.param("postgres://localhost/incidentops", id="alias-postgres"),
+        pytest.param("", id="vacia"),
+        pytest.param("   ", id="solo-espacios"),
+    ],
 )
 def test_rechaza_database_url_con_esquema_no_soportado(url: str) -> None:
     with pytest.raises(ConfigurationError):
@@ -185,7 +192,7 @@ def test_rechaza_database_url_con_esquema_no_soportado(url: str) -> None:
 
 
 def test_resuelve_memoria_y_archivo(tmp_path: Path) -> None:
-    assert resolve_database_path("") == ":memory:"
+    assert resolve_database_path() == ":memory:"
     assert resolve_database_path("sqlite:///:memory:") == ":memory:"
 
     ruta = tmp_path / "incidentops.db"
@@ -193,6 +200,14 @@ def test_resuelve_memoria_y_archivo(tmp_path: Path) -> None:
 
     repositorio = create_repository(f"sqlite:///{ruta}")
     assert repositorio.check_health() is True
+
+
+def test_la_url_vacia_es_configuracion_invalida() -> None:
+    """H004: definida pero vacía no cae a memoria en silencio (FR-006)."""
+    with pytest.raises(ConfigurationError):
+        resolve_database_path("")
+    with pytest.raises(ConfigurationError):
+        create_repository("   ")
 
 
 @pytest.mark.parametrize(
@@ -448,6 +463,30 @@ def test_rechaza_equipo_fuera_del_catalogo_al_escribir() -> None:
 
     with pytest.raises(InvalidIncidentError):
         repositorio.save_incident(incidente)
+
+
+def test_las_fechas_nuevas_se_persisten_con_microsegundos() -> None:
+    """FR-009: el texto crudo cumple `YYYY-MM-DDTHH:MM:SS.ffffff`."""
+    repositorio = SQLiteIncidentRepository()
+    incidente = Incident(
+        incident_id="INC-US",
+        title="Microsegundos",
+        component="payments-gateway",
+        severity="P0",
+        status="RESOLVED",
+        created_at=datetime(2026, 11, 20, 10, 0, 0),
+        resolved_at=datetime(2026, 11, 20, 10, 0, 30, 654321),
+    )
+
+    repositorio.save_incident(incidente)
+
+    fila = repositorio.conn.execute(
+        "SELECT created_at, resolved_at FROM incidents WHERE incident_id = ?",
+        ("INC-US",),
+    ).fetchone()
+    assert fila["created_at"] == "2026-11-20T10:00:00.000000"
+    assert fila["resolved_at"] == "2026-11-20T10:00:30.654321"
+    assert repositorio.get_incident("INC-US") == incidente
 
 
 def test_el_plan_de_la_clave_de_grupo_usa_el_indice_nuevo() -> None:

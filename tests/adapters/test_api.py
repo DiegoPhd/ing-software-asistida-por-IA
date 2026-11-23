@@ -1,6 +1,7 @@
 """Pruebas de aceptación del adaptador HTTP."""
 
 from pathlib import Path
+from typing import Optional, Sequence
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 from src.adapters.inbound.api.app import create_app
 from src.adapters.outbound.sqlite_repository import SQLiteIncidentRepository
 from src.application.services import IncidentService
+from src.domain.models import Incident
 
 TEXTO_P0 = (
     "URGENTE: El gateway de pagos devuelve HTTP 502 Bad Gateway en todas las "
@@ -85,10 +87,13 @@ def test_campo_faltante_devuelve_422_con_codigo_estable(cliente_http: TestClient
 
 
 def test_health_responde_ok(cliente_http: TestClient) -> None:
+    """FR-001: cuerpo exacto nuevo, JSON y sin caché en intermediarios."""
     respuesta = cliente_http.get("/health")
 
     assert respuesta.status_code == 200
-    assert respuesta.json() == {"status": "ok"}
+    assert respuesta.json() == {"status": "ok", "database": "connected"}
+    assert respuesta.headers["content-type"].startswith("application/json")
+    assert respuesta.headers["cache-control"] == "no-store"
 
 
 # ---------------------------------------------------------------------------
@@ -284,3 +289,61 @@ def test_el_conflicto_de_alta_es_409_create_id_conflicto(
 
     assert respuesta.status_code == 409
     assert respuesta.json()["code"] == "CREATE_ID_CONFLICTO"
+
+
+class _RepositorioNoDisponible:
+    """Doble del puerto cuyo motor lanza un error de conexión inesperado."""
+
+    MENSAJE = "connection refused: host interno no disponible"
+
+    def save_incident(self, incident: Incident) -> None:
+        raise ConnectionError(self.MENSAJE)
+
+    def get_incident(self, incident_id: str) -> Optional[Incident]:
+        raise ConnectionError(self.MENSAJE)
+
+    def find_open_duplicates(self, incident: Incident) -> Sequence[Incident]:
+        raise ConnectionError(self.MENSAJE)
+
+    def list_active_incidents(
+        self, component_filter: Optional[str]
+    ) -> Sequence[Incident]:
+        raise ConnectionError(self.MENSAJE)
+
+    def check_health(self) -> bool:
+        return False
+
+
+def test_el_motor_caido_conserva_el_error_generico_de_negocio() -> None:
+    """FR-012: solo `/health` informa la caída; el negocio mantiene su 500.
+
+    La API no traduce la indisponibilidad a 503 en las capacidades de negocio ni
+    introduce códigos nuevos, y el detalle del driver no se filtra.
+    """
+    cliente = TestClient(
+        create_app(IncidentService(_RepositorioNoDisponible())),
+        raise_server_exceptions=False,
+    )
+
+    resumen = cliente.get(
+        "/api/v1/incidents/summary",
+        params={"reference_time": "2026-11-20T12:00:00"},
+    )
+    alta = cliente.post(
+        "/api/v1/incidents",
+        json={"incident_id": "INC-1", "raw_text": TEXTO_P0},
+    )
+    auditoria = cliente.get(
+        "/api/v1/incidents/INC-1/sla",
+        params={"reference_time": "2026-11-20T12:00:00"},
+    )
+
+    assert resumen.status_code == 500
+    assert resumen.json()["code"] == "SUMMARY_ERROR_INTERNO"
+    assert alta.status_code == 500
+    assert alta.json()["code"] == "CREATE_ERROR_INTERNO"
+    assert auditoria.status_code == 500
+    assert auditoria.json()["code"] == "SLA_ERROR_INTERNO"
+    for respuesta in (resumen, alta, auditoria):
+        assert _RepositorioNoDisponible.MENSAJE not in respuesta.text
+        assert "host interno" not in respuesta.text

@@ -145,6 +145,11 @@ def _validar_fecha(instante: datetime, campo: str) -> None:
         )
 
 
+def _texto_temporal(instante: datetime) -> str:
+    """Normaliza a `YYYY-MM-DDTHH:MM:SS.ffffff` en ambos motores (FR-009)."""
+    return instante.isoformat(timespec="microseconds")
+
+
 class SQLiteIncidentRepository:
     """Persistencia SQLite del contrato `IncidentRepositoryPort`."""
 
@@ -283,8 +288,10 @@ class SQLiteIncidentRepository:
                         incident.component,
                         incident.severity,
                         incident.status,
-                        incident.created_at.isoformat(),
-                        incident.resolved_at.isoformat() if incident.resolved_at else None,
+                        _texto_temporal(incident.created_at),
+                        _texto_temporal(incident.resolved_at)
+                        if incident.resolved_at
+                        else None,
                         incident.raw_text,
                         incident.recommended_team,
                         incident.duplicate_group_key,

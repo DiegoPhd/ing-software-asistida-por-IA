@@ -1,0 +1,59 @@
+# Despliegue de referencia de IncidentOps (ADR-008): una base PostgreSQL
+# dedicada y una API, con arranque ordenado, volumen nombrado y healthchecks.
+# `docker compose up -d --build --wait` deja ambos servicios sanos.
+
+name: incidentops
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-incidentops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-incidentops_local}
+      POSTGRES_DB: ${POSTGRES_DB:-incidentops}
+    volumes:
+      - incidentops_pgdata:${PGDATA:-/var/lib/postgresql/data}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-incidentops} -d ${POSTGRES_DB:-incidentops}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    # La base no se publica al host: solo es alcanzable desde la red de Compose.
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incidentops}:${POSTGRES_PASSWORD:-incidentops_local}@db:5432/${POSTGRES_DB:-incidentops}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      # La imagen slim no trae curl: se usa urllib y el mismo /health, de modo
+      # que un 503 mantiene el contenedor como no sano.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+
+volumes:
+  incidentops_pgdata:
+    name: incidentops_pgdata
