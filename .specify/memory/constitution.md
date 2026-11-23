@@ -276,7 +276,7 @@ Un PR NO se integra si incumple cualquiera de estas condiciones:
    en el mismo PR.
 8. Código, docstrings y documentación se mantienen en español.
 
-Los cambios se desarrollan en ramas `diego.betancourt/reto-N` y se integran por PR
+Los cambios se desarrollan en la rama actual y se integran por PR
 a `main`. No se dejan dos formas competidoras de invocar una capacidad: al migrar
 un módulo legado se retira o reemplaza su punto de entrada en el mismo PR.
 

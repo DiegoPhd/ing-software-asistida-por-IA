@@ -45,7 +45,7 @@
 - **Diferencia entre *Commands* (`/speckit.*`) y *Agent Skills* (`hexagonal-architecture`, `bdd-acceptance`, `adr-writer`)**: Explica cómo OpenCode carga las *skills* bajo demanda y por qué fue necesario seguir el orden causal ADR $\rightarrow$ Constitución $\rightarrow$ Hito tanto en clase (`ADR-003` antes de `docs/constitution.md`) como en el Reto 2 (`ADR-004` y actualización de `.specify/memory/constitution.md` antes de especificar e implementar el Hito `004`).
 - **Valor de la Arquitectura Hexagonal**: Explica cómo compartir `IncidentService` e `IncidentRepositoryPort` facilitó exponer FastAPI, Typer y el adaptador PostgreSQL sin tocar el dominio (y cómo prepara la incorporación de futuros adaptadores).
 - **Uso intencional de *Reasoning / Extended Thinking* en OpenCode**: ¿En qué comandos (`/speckit.clarify`, `/speckit.plan`, `/speckit.analyze`) aportó mayor valor el razonamiento extendido y en cuáles (`/speckit.implement`) resultó más eficiente un modelo rápido?
-
+    - En este caso no aplica, dado que siempre utilicé el mismo modelo con el mismo esfuerzo el cual fue DeepSeek V4.1 Flash con esfuerzo en High
 ---
 
 ## 4. Evidencia de Verificación Determinista

@@ -1,6 +1,6 @@
 # Plan de Implementación: Ciclo de vida, duplicados y SLA (H003)
 
-**Rama de trabajo**: `diego.betancourt/taller-autonomo` · **Rama de entrega**: `diego.betancourt/reto-3`
+**Rama de trabajo**: rama actual · **Rama de entrega**: rama actual
 
 **Fecha**: 2026-11-22 | **Spec**: [spec.md](./spec.md)
 
@@ -8,7 +8,7 @@
 (alta persistente, aviso de duplicados abiertos y auditoría de SLA por HTTP y consola).
 
 > Nota de rama: `setup-plan.ps1` informó `003-incident-lifecycle-sla`, que no existe en el
-> repositorio. La rama `diego.betancourt/reto-3` existe pero está **por detrás de `main`** (no
+> repositorio. La rama actual existe pero está **por detrás de `main`** (no
 > contiene H002). Debe recrearse desde `main` antes de implementar; el trabajo no se ramifica
 > desde el estado actual de `reto-3`.
 

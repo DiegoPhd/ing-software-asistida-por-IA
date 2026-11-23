@@ -380,4 +380,4 @@ No quedan puntos abiertos. Las cuatro discrepancias iniciales se cerraron así:
 - [ ] `AGENTS.md` sin `python -m src.triage_rules` y con los comandos nuevos.
 - [ ] `README.md` actualizado.
 - [ ] `CONTEXT_LOG.md` sin reescribir.
-- [ ] Rama `diego.betancourt/reto-4`.
+- [ ] Rama actual.

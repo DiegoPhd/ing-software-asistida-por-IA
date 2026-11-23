@@ -1,6 +1,6 @@
 # Plan de Implementación: Resumen de Incidentes Activos (H002)
 
-**Rama de trabajo**: `diego.betancourt/reto-4` · **Rama de entrega H002**: `diego.betancourt/reto-N` (pendiente de asignación)
+**Rama de trabajo**: rama actual · **Rama de entrega H002**: rama actual (pendiente de asignación)
 
 **Fecha**: 2026-11-22 | **Spec**: [spec.md](./spec.md)
 

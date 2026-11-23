@@ -47,5 +47,5 @@ Ruff is configured in `pyproject.toml` (`target-version = "py310"`, `select = ["
 - Code, docstrings, and docs are in Spanish; keep them that way.
 - `CONTEXT_LOG.md` is the graded prompt-engineering log. Do not rewrite or regenerate it as filler.
 - ADRs go in `docs/adr/NNN-*.md` using `docs/adr/000-template.md`, including a Mermaid diagram. ADR-005 records the H002 topology, the single port and the factory.
-- Work lands on `diego.betancourt/reto-N` branches merged by PR into `main`.
+- Work lands on actual branch branches merged by PR into `main`.
 - On Windows, accented Spanish output may look like mojibake in the console; set `$env:PYTHONIOENCODING='utf-8'` before trusting the text.

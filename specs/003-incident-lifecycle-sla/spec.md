@@ -1,6 +1,6 @@
 # Especificación de Funcionalidad: Ciclo de vida, duplicados y SLA
 
-**Rama de la funcionalidad**: `diego.betancourt/reto-3` (pendiente de creación)
+**Rama de la funcionalidad**: actual (pendiente de creación)
 
 **Creado**: 2026-11-22
 
