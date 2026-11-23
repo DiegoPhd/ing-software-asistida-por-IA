@@ -36,7 +36,7 @@
 1. De los tres niveles descritos por Böckeler (**Spec-first**, **Spec-anchored**, **Spec-as-source**), ¿en cuál ubicas este proyecto de *IncidentOps* y por qué?
     - **Spec-as-source** porque no se interviene en el código, si bien, se revisa, para hacer modificaciones al código, lo que se hace es revisar muy bien el paso a paso de las especificaciones, objetivos y/o criterios de aceptación. Hacer un cambio manual en el código, puede producir que no se estén respetando los manifiestos. 
 2. Böckeler advierte que los *toolkits* SDD pueden generar "montañas de Markdown" difíciles de revisar para un humano. ¿Qué técnicas aplicaste (concisión en `docs/ROADMAP.md`, curaduría en `clarify`/`plan`/`tasks` y pruebas deterministas en `pytest`) para evitar aprobar especificaciones verbosas a ciegas?
-    - Al aplicar BDD para la generación de casos de prueba 
+    - Primeramente ejecuté clarify para cerrar varias brechas y ambigüedades, en algunas ocasiones fue necesario ejecutar el comando dos veces para hacer una revisión más exhaustiva, luego apliqué BDD para la generación de casos de prueba y realizar pruebas sobre esto con pytest permitió validar las implementaciones realizadas, considero que es una gran herramienta de validación para el Markdown
 
 ---
 
