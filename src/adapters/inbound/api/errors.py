@@ -1,7 +1,9 @@
 """Traducción de errores de aplicación y de validación al formato problem+json.
 
-El prefijo del código estable se elige por ruta: `SUMMARY_*` para el resumen y
-`TRIAGE_*` para el triaje, sin duplicar manejadores.
+El prefijo del código estable se elige por ruta: `SUMMARY_*` para el resumen,
+`TRIAGE_*` para el triaje, `CREATE_*` para el alta y `SLA_*` para la auditoría
+puntual. `/summary` se evalúa antes que el patrón con identificador y un único
+manejador publica el estado que la aplicación decida.
 """
 
 from typing import Any, Dict, List
@@ -12,17 +14,41 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.adapters.inbound.problem import build_problem
-from src.application.services import DataInconsistencyError, ValidationError
+from src.application.services import (
+    DataInconsistencyError,
+    IncidentAlreadyExistsError,
+    IncidentNotFoundError,
+    ValidationError,
+)
 
 PROBLEM_JSON = "application/problem+json"
 
-
-def _es_resumen(request: Request) -> bool:
-    return request.url.path.rstrip("/").endswith("/incidents/summary")
+_DETALLES_ESQUEMA: Dict[str, str] = {
+    "SUMMARY": "La solicitud del resumen no cumple el esquema esperado.",
+    "TRIAGE": (
+        "La solicitud no cumple el esquema esperado: se requieren incident_id "
+        "y raw_text como texto."
+    ),
+    "CREATE": (
+        "La solicitud de alta no cumple el esquema esperado: se requieren "
+        "incident_id y raw_text como texto y ningún campo desconocido."
+    ),
+    "SLA": "La solicitud de SLA no cumple el esquema esperado.",
+}
 
 
 def _prefijo(request: Request) -> str:
-    return "SUMMARY" if _es_resumen(request) else "TRIAGE"
+    """Elige el prefijo del contrato según la ruta solicitada."""
+    ruta = request.url.path.rstrip("/")
+    if ruta.endswith("/incidents/summary"):
+        return "SUMMARY"
+    if ruta.endswith("/incidents/triage"):
+        return "TRIAGE"
+    if ruta.endswith("/sla"):
+        return "SLA"
+    if ruta.endswith("/incidents"):
+        return "CREATE"
+    return "TRIAGE"
 
 
 def _codigo_solicitud(request: Request) -> str:
@@ -51,8 +77,26 @@ async def manejar_validacion_de_aplicacion(
 async def manejar_inconsistencia_de_datos(
     _request: Request, exc: DataInconsistencyError
 ) -> JSONResponse:
-    """Traduce un dato almacenado incoherente a 409 sin totales parciales."""
+    """Publica la incoherencia con el estado que fija la aplicación.
+
+    El resumen de H002 conserva su 409; la auditoría usa 422 para una referencia
+    incoherente y 409 para un dato almacenado incoherente.
+    """
+    return _respuesta(build_problem(exc.code, exc.field, exc.detail, status=exc.status))
+
+
+async def manejar_incidente_ya_existe(
+    _request: Request, exc: IncidentAlreadyExistsError
+) -> JSONResponse:
+    """Traduce el conflicto de identificador del alta a 409 sin sobrescribir."""
     return _respuesta(build_problem(exc.code, exc.field, exc.detail, status=409))
+
+
+async def manejar_incidente_no_encontrado(
+    _request: Request, exc: IncidentNotFoundError
+) -> JSONResponse:
+    """Traduce la ausencia del incidente consultado a 404 problem+json."""
+    return _respuesta(build_problem(exc.code, exc.field, exc.detail, status=404))
 
 
 async def manejar_validacion_de_esquema(
@@ -74,15 +118,10 @@ async def manejar_validacion_de_esquema(
             }
         )
 
-    detalle = (
-        "La solicitud del resumen no cumple el esquema esperado."
-        if _es_resumen(request)
-        else "La solicitud no cumple el esquema esperado: se requieren incident_id y raw_text como texto."
-    )
     documento = build_problem(
         code,
         campos[0]["field"] if campos else "request",
-        detalle,
+        _DETALLES_ESQUEMA[_prefijo(request)],
         status=422,
     )
     documento["errors"] = campos

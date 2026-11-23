@@ -21,6 +21,23 @@ _TITULOS: Dict[str, str] = {
     "SUMMARY_SOLICITUD_INVALIDA": "Solicitud de resumen inválida",
     "SUMMARY_REFERENCIA_INCONSISTENTE": "Instante de referencia incoherente con los datos",
     "SUMMARY_ERROR_INTERNO": "Error interno al construir el resumen",
+    "CREATE_ID_VACIO": "Identificador de incidente vacío",
+    "CREATE_ID_DEMASIADO_LARGO": "Identificador de incidente demasiado largo",
+    "CREATE_TEXTO_VACIO": "Texto de reporte vacío",
+    "CREATE_TEXTO_DEMASIADO_LARGO": "Texto de reporte demasiado largo",
+    "CREATE_TITULO_VACIO": "Título de incidente vacío",
+    "CREATE_TITULO_DEMASIADO_LARGO": "Título de incidente demasiado largo",
+    "CREATE_CREACION_INVALIDA": "Instante de creación inválido",
+    "CREATE_SOLICITUD_INVALIDA": "Solicitud de alta inválida",
+    "CREATE_ID_CONFLICTO": "Identificador de incidente ya registrado",
+    "CREATE_ERROR_INTERNO": "Error interno al registrar el incidente",
+    "SLA_ID_VACIO": "Identificador de incidente vacío",
+    "SLA_REFERENCIA_INVALIDA": "Instante de referencia inválido",
+    "SLA_SOLICITUD_INVALIDA": "Solicitud de SLA inválida",
+    "SLA_REFERENCIA_INCONSISTENTE": "Instante de referencia anterior a la creación",
+    "SLA_DATOS_INCONSISTENTES": "Datos del incidente incoherentes",
+    "SLA_INCIDENTE_NO_ENCONTRADO": "Incidente no encontrado",
+    "SLA_ERROR_INTERNO": "Error interno al auditar el SLA",
 }
 
 

@@ -8,6 +8,7 @@ import os
 from typing import Optional
 
 from src.adapters.outbound.sqlite_repository import SQLiteIncidentRepository
+from src.adapters.outbound.system_clock import SystemClock
 from src.application.ports import IncidentRepositoryPort
 from src.application.services import IncidentService
 
@@ -49,5 +50,5 @@ def create_repository(database_url: Optional[str] = None) -> IncidentRepositoryP
 
 
 def build_incident_service(database_url: Optional[str] = None) -> IncidentService:
-    """Ensambla el caso de uso con su puerto de persistencia."""
-    return IncidentService(create_repository(database_url))
+    """Ensambla el caso de uso con su persistencia y el reloj del sistema."""
+    return IncidentService(create_repository(database_url), clock=SystemClock())

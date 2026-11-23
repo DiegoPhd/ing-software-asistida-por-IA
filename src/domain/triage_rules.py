@@ -5,9 +5,30 @@ la misma entrada produce siempre la misma salida.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from datetime import timedelta
+from difflib import SequenceMatcher
+from types import MappingProxyType
+from typing import Mapping, Optional, Sequence, Tuple
 
+from src.domain.models import ACTIVE_STATUSES, Incident
 from src.domain.severity import SeverityLevel, Team, team_for_component
+
+__all__ = [
+    "DUPLICATE_SIMILARITY_THRESHOLD",
+    "DUPLICATE_WINDOW_DAYS",
+    "DuplicateAssessment",
+    "TriageResult",
+    "assess_duplicates",
+    "classify_impact",
+    "is_equivalent",
+]
+
+DUPLICATE_SIMILARITY_THRESHOLD = 0.75
+
+# Ventana de la severidad del incidente más antiguo del par (Constitución §1.4).
+DUPLICATE_WINDOW_DAYS: Mapping[SeverityLevel, int] = MappingProxyType(
+    {"P0": 1, "P1": 2, "P2": 3, "P3": 4}
+)
 
 
 @dataclass(frozen=True)
@@ -20,6 +41,19 @@ class TriageResult:
     recommended_team: Team
     rationale: str
     duplicate_group_key: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DuplicateAssessment:
+    """Veredicto informativo de equivalencia con incidentes previos."""
+
+    duplicate_group_key: Optional[str]
+    duplicate_of: Tuple[str, ...]
+
+    @property
+    def is_duplicate(self) -> bool:
+        """Verdadera si y sólo si hay equivalentes previos."""
+        return bool(self.duplicate_of)
 
 
 # Marcadores de impacto. La precedencia es P0 -> P1 -> P2 -> P3 y el valor por
@@ -97,4 +131,71 @@ def classify_impact(incident_id: str, raw_text: str) -> TriageResult:
         recommended_team=recommended_team,
         rationale=rationale,
         duplicate_group_key=None,
+    )
+
+
+def _clave_canonica(incident: Incident) -> Tuple[object, str]:
+    """Orden canónico del lote: instante de creación y, en empate, identificador."""
+    return (incident.created_at, incident.incident_id)
+
+
+def _similitud(primero: str, segundo: str) -> float:
+    """Similitud de `SequenceMatcher` sobre el texto en minúsculas."""
+    return SequenceMatcher(None, primero.lower(), segundo.lower()).ratio()
+
+
+def is_equivalent(older: Incident, newer: Incident) -> bool:
+    """Decide si dos incidentes son equivalentes según la regla vigente.
+
+    Sólo cuentan candidatos activos, del mismo componente, con identificador
+    distinto y texto original no vacío. La ventana aplicable es la de la
+    severidad del más antiguo del par y el límite exacto es equivalente.
+    """
+    primero, segundo = sorted((older, newer), key=_clave_canonica)
+    if primero.status not in ACTIVE_STATUSES:
+        return False
+    if primero.component != segundo.component:
+        return False
+    if primero.incident_id == segundo.incident_id:
+        return False
+
+    texto_primero = (primero.raw_text or "").strip()
+    texto_segundo = (segundo.raw_text or "").strip()
+    if not texto_primero or not texto_segundo:
+        return False
+
+    ventana_dias = DUPLICATE_WINDOW_DAYS.get(primero.severity)
+    if ventana_dias is None:
+        return False
+    diferencia = segundo.created_at - primero.created_at
+    if not (timedelta(0) <= diferencia <= timedelta(days=ventana_dias)):
+        return False
+
+    return _similitud(texto_primero, texto_segundo) >= DUPLICATE_SIMILARITY_THRESHOLD
+
+
+def assess_duplicates(
+    new_incident: Incident, candidates: Sequence[Incident]
+) -> DuplicateAssessment:
+    """Evalúa los candidatos estructurales y devuelve el aviso de duplicados.
+
+    Sólo los equivalentes que preceden al nuevo en el orden canónico entran en
+    `duplicate_of`, de más antiguo a más reciente. La clave del grupo es la del
+    original más antiguo o la que ese original ya hubiera heredado.
+    """
+    nuevo = _clave_canonica(new_incident)
+    previos = [
+        candidato
+        for candidato in candidates
+        if _clave_canonica(candidato) < nuevo
+        and is_equivalent(candidato, new_incident)
+    ]
+    if not previos:
+        return DuplicateAssessment(None, ())
+
+    previos.sort(key=_clave_canonica)
+    original = previos[0]
+    return DuplicateAssessment(
+        duplicate_group_key=original.duplicate_group_key or original.incident_id,
+        duplicate_of=tuple(candidato.incident_id for candidato in previos),
     )
