@@ -16,3 +16,8 @@ extend = "../../pyproject.toml"
 "sqlite3" = { msg = "El dominio no puede depender de SQLite." }
 "psycopg" = { msg = "El dominio no puede depender de PostgreSQL ni de drivers de BD." }
 "psycopg2" = { msg = "El dominio no puede depender de PostgreSQL ni de drivers de BD." }
+"mcp" = { msg = "El dominio no puede depender de MCP ni de SDKs de agentes." }
+"langgraph" = { msg = "El dominio no puede depender de frameworks de agentes." }
+"langchain_core" = { msg = "El dominio no puede depender de frameworks de agentes." }
+"langchain_google_genai" = { msg = "El dominio no puede depender de proveedores LLM." }
+"pgvector" = { msg = "El dominio no puede depender de extensiones vectoriales de BD." }

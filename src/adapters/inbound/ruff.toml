@@ -5,8 +5,15 @@ extend = "../../../pyproject.toml"
 [lint.flake8-tidy-imports.banned-api]
 "src.adapters.outbound.sqlite_repository" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
 "src.adapters.outbound.postgres_repository" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
+"src.adapters.outbound.pgvector_semantic_store" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
+"src.adapters.outbound.langgraph_duplicate_detector" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
+"src.adapters.outbound.langgraph_triage_agent" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
 "psycopg" = { msg = "El driver PostgreSQL solo se importa desde src.adapters.outbound." }
 "psycopg2" = { msg = "El driver PostgreSQL solo se importa desde src.adapters.outbound; usa psycopg 3." }
+"langgraph" = { msg = "El inbound no puede depender de frameworks de agentes; usa src.adapters.outbound.factory." }
+"langchain_core" = { msg = "El inbound no puede depender de frameworks de agentes; usa src.adapters.outbound.factory." }
+"langchain_google_genai" = { msg = "El inbound no puede depender de proveedores LLM; usa src.adapters.outbound.factory." }
+"pgvector" = { msg = "El inbound no puede depender de extensiones vectoriales; usa src.adapters.outbound.factory." }
 "src.composition" = { msg = "El legado src/composition.py se retiró; usa src.adapters.outbound.factory." }
 "src.models" = { msg = "El legado src/models.py se retiró; usa src.domain.models." }
 "src.sla_calculator" = { msg = "El legado src/sla_calculator.py se retiró; usa src.domain.sla_calculator." }

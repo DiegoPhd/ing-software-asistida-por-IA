@@ -12,3 +12,8 @@ extend = "../../pyproject.toml"
 "sqlite3" = { msg = "La aplicación no puede depender de SQLite." }
 "psycopg" = { msg = "La aplicación no puede depender de PostgreSQL ni de drivers de BD." }
 "psycopg2" = { msg = "La aplicación no puede depender de PostgreSQL ni de drivers de BD." }
+"mcp" = { msg = "La aplicación no puede depender de MCP ni de SDKs de agentes." }
+"langgraph" = { msg = "La aplicación no puede depender de frameworks de agentes." }
+"langchain_core" = { msg = "La aplicación no puede depender de frameworks de agentes." }
+"langchain_google_genai" = { msg = "La aplicación no puede depender de proveedores LLM." }
+"pgvector" = { msg = "La aplicación no puede depender de extensiones vectoriales de BD." }
