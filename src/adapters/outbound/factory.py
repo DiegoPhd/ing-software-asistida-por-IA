@@ -4,6 +4,10 @@
 inbound nunca instancia un repositorio ni lee la variable. La ausencia total de
 la variable habilita la ruta local en memoria; un valor definido pero vacío es
 un error de configuración y nunca cae a memoria en silencio (FR-006).
+
+`build_incident_service` es la entrada compartida por los tres adaptadores de
+entrada (REST, CLI y MCP): cada uno decide cuándo construir o reutilizar la
+instancia, pero ninguno compone el repositorio ni el reloj por su cuenta.
 """
 
 import os
@@ -95,5 +99,11 @@ def create_repository(database_url: Optional[str] = None) -> IncidentRepositoryP
 
 
 def build_incident_service(database_url: Optional[str] = None) -> IncidentService:
-    """Ensambla el caso de uso con su persistencia y el reloj del sistema."""
+    """Ensambla el caso de uso con su persistencia y el reloj del sistema.
+
+    Es la única construcción de `IncidentService` del proyecto: REST, CLI y MCP
+    la comparten y ningún adaptador instancia el repositorio ni el reloj. El
+    adaptador MCP cachea la instancia durante la vida del proceso; los demás
+    canales construyen una por operación.
+    """
     return IncidentService(create_repository(database_url), clock=SystemClock())

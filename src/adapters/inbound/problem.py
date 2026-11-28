@@ -16,6 +16,7 @@ _TITULOS: Dict[str, str] = {
     "TRIAGE_FUENTE_TEXTO_INVALIDA": "Fuente de texto inválida",
     "TRIAGE_ARCHIVO_INVALIDO": "Archivo de reporte inválido",
     "TRIAGE_ID_CONFLICTO": "Identificador de incidente en conflicto",
+    "TRIAGE_ERROR_INTERNO": "Error interno al clasificar el reporte",
     "SUMMARY_COMPONENTE_DEMASIADO_LARGO": "Componente del filtro demasiado largo",
     "SUMMARY_REFERENCIA_INVALIDA": "Instante de referencia inválido",
     "SUMMARY_SOLICITUD_INVALIDA": "Solicitud de resumen inválida",

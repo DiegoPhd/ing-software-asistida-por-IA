@@ -8,6 +8,7 @@ extend = "../../../pyproject.toml"
 "src.adapters.outbound.pgvector_semantic_store" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
 "src.adapters.outbound.langgraph_duplicate_detector" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
 "src.adapters.outbound.langgraph_triage_agent" = { msg = "El inbound solo puede usar src.adapters.outbound.factory." }
+"sqlite3" = { msg = "El inbound nunca abre la base; usa src.adapters.outbound.factory." }
 "psycopg" = { msg = "El driver PostgreSQL solo se importa desde src.adapters.outbound." }
 "psycopg2" = { msg = "El driver PostgreSQL solo se importa desde src.adapters.outbound; usa psycopg 3." }
 "langgraph" = { msg = "El inbound no puede depender de frameworks de agentes; usa src.adapters.outbound.factory." }

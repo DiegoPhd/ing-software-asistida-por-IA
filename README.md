@@ -37,12 +37,18 @@ src/
 │   ├── ports.py            # IncidentRepositoryPort y ClockPort (Protocol)
 │   └── services.py         # IncidentService: triaje, alta, resumen y SLA
 └── adapters/
-    ├── inbound/            # api/app.py · cli.py · health_contract · problem.py
+    ├── inbound/            # api/app.py · cli.py · mcp_server.py · contratos compartidos
     └── outbound/           # sqlite_repository.py · postgres_repository.py · factory.py
 ```
 
 - Los adaptadores de entrada solo conocen el caso de uso, el contrato de
   transporte compartido y la fábrica de salida.
+- El tercer adaptador de entrada es MCP sobre stdio
+  (`uv run python -m src.adapters.inbound.mcp_server`): publica las herramientas
+  `triage_incident`, `create_incident`, `get_active_incidents_summary`,
+  `evaluate_incident_sla` y `check_health` sobre el mismo `IncidentService`, sin
+  reglas propias. `stdout` queda reservado al JSON-RPC; el diagnóstico va a
+  `stderr`.
 - `src/adapters/outbound/factory.py` es el único punto que instancia clases
   concretas, selecciona el repositorio por `DATABASE_URL` e inyecta
   `SystemClock` a través de `ClockPort`.
