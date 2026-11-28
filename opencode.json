@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "incidentops": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.adapters.inbound.mcp_server"
+      ],
+      "environment": {
+        "DATABASE_URL": "sqlite:///./incidentops_dev.db"
+      }
+    }
+  }
+}
